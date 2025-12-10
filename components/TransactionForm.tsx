@@ -1,15 +1,16 @@
 import React, { useState, useRef } from 'react';
 import { Transaction } from '../types';
-import { Send, UploadCloud, Loader2, FileText } from 'lucide-react';
+import { Send, UploadCloud, Loader2, FileText, Globe } from 'lucide-react';
 
 interface TransactionFormProps {
   onSubmit: (tx: Omit<Transaction, 'id' | 'status' | 'timestamp'>) => void;
   onBulkSubmit?: (txs: Omit<Transaction, 'id' | 'status' | 'timestamp'>[]) => void;
+  onFetchLive?: () => void;
   isLoading: boolean;
   processingStatus?: string;
 }
 
-const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onBulkSubmit, isLoading, processingStatus }) => {
+const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onBulkSubmit, onFetchLive, isLoading, processingStatus }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     amount: 250000,
@@ -79,7 +80,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onBulkSubmi
   };
 
   return (
-    <div className="bg-secondary p-6 rounded-xl border border-slate-700 h-full">
+    <div className="bg-secondary p-4 sm:p-6 rounded-xl border border-slate-700 h-full">
       <div className="flex items-center gap-2 mb-6 text-slate-300">
         <UploadCloud size={20} className="text-accent" />
         <h3 className="font-semibold">Ingest New Transaction</h3>
@@ -96,7 +97,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onBulkSubmi
           />
         </div>
         
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">Amount</label>
               <input
@@ -130,7 +131,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onBulkSubmi
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
                 <label className="block text-xs font-medium text-slate-500 mb-1">Type</label>
                 <select
@@ -171,35 +172,48 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onBulkSubmi
           </select>
         </div>
 
-        <div className="flex gap-2 pt-2">
+        <div className="flex flex-col gap-3 pt-2">
             <button
                 type="submit"
                 disabled={isLoading}
-                className="flex-1 bg-accent hover:bg-blue-600 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-accent hover:bg-blue-600 text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-900/20"
             >
                 {isLoading ? (
                     <span className="flex items-center gap-2">
-                    <Loader2 className="animate-spin" size={16} />
+                    <Loader2 className="animate-spin" size={18} />
                     <span>Processing</span>
                     </span>
                 ) : (
                     <>
-                    <Send size={16} />
-                    <span>Simulate</span>
+                    <Send size={18} />
+                    <span>Simulate Ingest</span>
                     </>
                 )}
             </button>
             
-            <button
-                type="button"
-                onClick={handleFileClick}
-                disabled={isLoading}
-                className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-600"
-                title="Upload CSV: Sender, Amount, Currency, Receiver, Type, Location, Country"
-            >
-                <FileText size={16} />
-                <span>Bulk CSV</span>
-            </button>
+            <div className="grid grid-cols-2 gap-3">
+                <button
+                    type="button"
+                    onClick={handleFileClick}
+                    disabled={isLoading}
+                    className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-700"
+                    title="Upload CSV"
+                >
+                    <FileText size={16} className="text-slate-400" />
+                    <span>Bulk CSV</span>
+                </button>
+                <button
+                    type="button"
+                    onClick={onFetchLive}
+                    disabled={isLoading || !onFetchLive}
+                    className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-700"
+                    title="Simulate External API via Oumi"
+                >
+                    <Globe size={16} className="text-green-400" />
+                    <span>Live Feed</span>
+                </button>
+            </div>
+            
             <input 
                 type="file" 
                 ref={fileInputRef} 
