@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { Transaction } from '../types';
-import { AlertTriangle, ShieldCheck, Activity, Filter, Search } from 'lucide-react';
+import { AlertTriangle, ShieldCheck, Activity, Filter, Search, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 
 interface DashboardProps {
   transactions: Transaction[];
@@ -212,10 +212,16 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, onSelectTx }) => {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-slate-300 hidden md:table-cell text-xs truncate max-w-[150px]">
-                    {tx.from_account}
+                    <div className="flex items-center gap-1.5">
+                        <ArrowUpRight size={14} className="text-slate-500 shrink-0" />
+                        <span className="truncate">{tx.from_account}</span>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-slate-300 hidden md:table-cell text-xs truncate max-w-[150px]">
-                    {tx.to_account}
+                    <div className="flex items-center gap-1.5">
+                        <ArrowDownLeft size={14} className="text-slate-500 shrink-0" />
+                        <span className="truncate">{tx.to_account}</span>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-slate-300 text-xs">
                     {tx.type}

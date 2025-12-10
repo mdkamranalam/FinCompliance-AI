@@ -196,7 +196,12 @@ const ReportView: React.FC<ReportViewProps> = ({ tx, risk, report, onClose }) =>
                    <span className="text-yellow-400 font-mono print:text-black font-bold">{risk.breakdown.rules}/100</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                   <span className="text-slate-300 print:text-black">Velocity Check</span>
+                   <span className="text-slate-300 print:text-black">
+                     Velocity Check
+                     {risk.velocity_count && risk.velocity_count > 1 && (
+                       <span className="ml-1 text-xs text-slate-500 font-normal">({risk.velocity_count} detected)</span>
+                     )}
+                   </span>
                    <span className="text-orange-400 font-mono print:text-black font-bold">{risk.breakdown.velocity}/100</span>
                 </div>
                 <div className="flex justify-between text-sm">

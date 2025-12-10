@@ -75,23 +75,26 @@ function App() {
     const isHighRiskJurisdiction = ['Seychelles', 'BVI', 'Cayman'].includes(newTx.receiver_country);
     const rulesScore = isHighRiskJurisdiction ? 95 : 10; // 0-100
     
-    // Logic: Velocity Check (High transaction volume for sender)
-    // Count transactions from this sender in the current state (mocking a time window)
+    // -------------------------------------------------------------------------
+    // VELOCITY FEATURE IMPLEMENTATION
+    // -------------------------------------------------------------------------
+    // Calculate Velocity: Count existing transactions from this sender in the current session
     const senderTxCount = state.transactions.filter(t => t.from_account === newTx.from_account).length + 1;
     
-    // Progressive Velocity Scoring
-    let velocityScore = 10;
+    // Assign Velocity Risk Score based on frequency thresholds
+    let velocityScore = 10; // Default Low
     if (senderTxCount >= 5) {
-        velocityScore = 95; // Critical velocity
+        velocityScore = 95; // Critical: High frequency/spam behavior
     } else if (senderTxCount >= 3) {
-        velocityScore = 80; // High velocity
+        velocityScore = 80; // High: Unusual frequency
     } else if (senderTxCount === 2) {
-        velocityScore = 30; // Medium velocity
+        velocityScore = 40; // Medium: Recurring
     }
 
+    // Determine if velocity contributes to high risk
     const isHighVelocity = velocityScore >= 80;
 
-    // ML Score
+    // ML Score Simulation
     const xgBoostScore = (isHighRiskJurisdiction || isHighVelocity) ? 92 : 15;
     
     // Step 4: Oumi/Gemini AI
@@ -100,6 +103,7 @@ function App() {
     
     let aiResult = { narrative: "Standard commercial transaction.", xml: "<Transaction>...</Transaction>" };
     
+    // Trigger High Risk Flag if either Jurisdiction or Velocity is critical
     const isHighRisk = isHighRiskJurisdiction || isHighVelocity;
 
     // Only call AI if medium/high risk to save tokens, or if explicit demo request
@@ -109,12 +113,13 @@ function App() {
 
     const oumiScore = isHighRisk ? 98 : 5;
     
-    // Weighted Score: Rules (50%) + Velocity (30%) + ML (10%) + Oumi (10%)
+    // Weighted Score Calculation
+    // Rules (50%) + Velocity (30%) + ML (10%) + Oumi (10%)
     const totalScore = Math.round((rulesScore * 0.5) + (velocityScore * 0.3) + (xgBoostScore * 0.1) + (oumiScore * 0.1));
 
     const reasons = [];
     if (isHighRiskJurisdiction) reasons.push('High Risk Jurisdiction (RBI List)');
-    if (isHighVelocity) reasons.push(`High Velocity (${senderTxCount} recent txns)`);
+    if (isHighVelocity) reasons.push(`High Velocity Alert (${senderTxCount} recent txns)`);
     if (newTx.amount > 1000000) reasons.push('High Value Transaction (> 10L)');
 
     const riskScore: RiskScore = {
