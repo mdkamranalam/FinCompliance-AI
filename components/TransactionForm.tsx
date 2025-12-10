@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Transaction } from '../types';
-import { Send, UploadCloud, Loader2 } from 'lucide-react';
+import { Send, UploadCloud, Loader2, FileText } from 'lucide-react';
 
 interface TransactionFormProps {
   onSubmit: (tx: Omit<Transaction, 'id' | 'status' | 'timestamp'>) => void;
+  onBulkSubmit?: (txs: Omit<Transaction, 'id' | 'status' | 'timestamp'>[]) => void;
   isLoading: boolean;
   processingStatus?: string;
 }
 
-const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, isLoading, processingStatus }) => {
+const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onBulkSubmit, isLoading, processingStatus }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     amount: 250000,
     currency: 'INR',
@@ -22,6 +24,58 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, isLoading, 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit(formData);
+  };
+
+  const handleFileClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !onBulkSubmit) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      // Parse CSV based on provided schema: 
+      // Header: Sender Account,Amount,Currency,Receiver Account,Type,Location,Receiver Country
+      const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+      
+      // Determine start index based on header presence
+      const hasHeader = lines[0].toLowerCase().includes('sender account');
+      const dataRows = hasHeader ? lines.slice(1) : lines;
+
+      const transactions: Omit<Transaction, 'id' | 'status' | 'timestamp'>[] = dataRows.map(line => {
+        const parts = line.split(',').map(s => s.trim());
+        
+        // Ensure we have enough columns (7 columns in schema)
+        if (parts.length < 7) return null;
+
+        const [from_account, amount, currency, to_account, type, location, receiver_country] = parts;
+        
+        return {
+          amount: parseFloat(amount) || 0,
+          currency: currency || 'INR',
+          from_account: from_account || 'Unknown',
+          to_account: to_account || 'Unknown',
+          receiver_country: receiver_country || 'Unknown',
+          type: type || 'WIRE',
+          location: location || 'Unknown',
+        };
+      }).filter((t): t is Omit<Transaction, 'id' | 'status' | 'timestamp'> => t !== null);
+
+      if (transactions.length > 0) {
+        onBulkSubmit(transactions);
+      } else {
+        alert("No valid transactions found in CSV. Please ensure format matches: Sender Account, Amount, Currency, Receiver Account, Type, Location, Receiver Country");
+      }
+      
+      // Reset input
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -117,23 +171,44 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, isLoading, 
           </select>
         </div>
 
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="w-full bg-accent hover:bg-blue-600 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2 mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isLoading ? (
-            <span className="flex items-center gap-2">
-               <Loader2 className="animate-spin" size={16} />
-               <span>{processingStatus || 'Processing...'}</span>
-            </span>
-          ) : (
-            <>
-              <Send size={16} />
-              <span>Simulate Ingest</span>
-            </>
-          )}
-        </button>
+        <div className="flex gap-2 pt-2">
+            <button
+                type="submit"
+                disabled={isLoading}
+                className="flex-1 bg-accent hover:bg-blue-600 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                {isLoading ? (
+                    <span className="flex items-center gap-2">
+                    <Loader2 className="animate-spin" size={16} />
+                    <span>Processing</span>
+                    </span>
+                ) : (
+                    <>
+                    <Send size={16} />
+                    <span>Simulate</span>
+                    </>
+                )}
+            </button>
+            
+            <button
+                type="button"
+                onClick={handleFileClick}
+                disabled={isLoading}
+                className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-600"
+                title="Upload CSV: Sender, Amount, Currency, Receiver, Type, Location, Country"
+            >
+                <FileText size={16} />
+                <span>Bulk CSV</span>
+            </button>
+            <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileChange} 
+                accept=".csv" 
+                className="hidden" 
+            />
+        </div>
+        
         <p className="text-xs text-center text-slate-500 mt-2">
             Triggers Kestra Workflow via FastAPI
         </p>
