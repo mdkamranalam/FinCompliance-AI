@@ -1,0 +1,368 @@
+import React, { useState } from 'react';
+import { Transaction, RiskAnalysis, STRReport } from '../types';
+import { FileCode, AlertOctagon, Check, Bot, Download, Send, Loader2, CheckCircle, Info, FileDown, Printer, AlertTriangle } from 'lucide-react';
+
+interface ReportViewProps {
+  tx: Transaction;
+  risk: RiskAnalysis;
+  report: STRReport;
+  onClose: () => void;
+}
+
+const ReportView: React.FC<ReportViewProps> = ({ tx, risk, report, onClose }) => {
+  const [isFiling, setIsFiling] = useState(false);
+  const [filingComplete, setFilingComplete] = useState(report.isFiled);
+  const [fiuRef, setFiuRef] = useState<string | null>(
+    report.isFiled ? `FIU-${Math.floor(Math.random() * 9000) + 1000}` : null
+  );
+
+  const handleDownloadPDF = () => {
+    // 1. Save current title
+    const originalTitle = document.title;
+    
+    // 2. Set descriptive title for the PDF file (browsers use this for the default filename)
+    document.title = `STR_Report_${tx.id}_${new Date().toISOString().split('T')[0]}`;
+    
+    // 3. Trigger print with a slight delay to ensure title update propagates
+    setTimeout(() => {
+        window.print();
+        
+        // 4. Restore title after print dialog interaction
+        setTimeout(() => {
+            document.title = originalTitle;
+        }, 1000);
+    }, 100);
+  };
+
+  const handleDownloadXML = () => {
+    const blob = new Blob([report.xmlPayload], { type: 'text/xml' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `FIU-IND_STR_${tx.id}.xml`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileReport = () => {
+    if (filingComplete) return;
+    setIsFiling(true);
+    // Simulate API call to FIU-IND Gateway
+    setTimeout(() => {
+        const ref = `FIU-${Math.floor(Math.random() * 9000) + 1000}`;
+        setFiuRef(ref);
+        setIsFiling(false);
+        setFilingComplete(true);
+    }, 2000);
+  };
+
+  return (
+    <div 
+      id="report-modal-wrapper"
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:p-0 print:bg-white print:block print:inset-auto print:static"
+    >
+      {/* Print Styles - Scoped and Robust */}
+      <style>{`
+        @media print {
+          @page { size: A4; margin: 10mm; }
+          
+          /* Reset root constraints */
+          html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            background-color: white !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          /* Hide everything in the DOM by default */
+          body * {
+            visibility: hidden;
+          }
+
+          /* Selectively make the report wrapper and its children visible */
+          #report-modal-wrapper, 
+          #report-modal-wrapper * {
+            visibility: visible;
+          }
+
+          /* Position the wrapper to be the only content in the flow */
+          #report-modal-wrapper {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            min-height: 100%;
+            margin: 0;
+            padding: 0;
+            background: white !important;
+            display: block !important;
+            z-index: 99999;
+          }
+
+          /* Reset container styling for print */
+          #report-container {
+            width: 100% !important;
+            max-width: none !important;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
+            overflow: visible !important;
+            height: auto !important;
+          }
+          
+          /* Utilities */
+          .no-print {
+            display: none !important;
+          }
+          
+          .break-inside-avoid {
+            break-inside: avoid;
+          }
+          
+          /* Force Color Remapping for Print (Dark Mode -> Light Mode) */
+          .text-slate-300, .text-slate-400, .text-slate-500, .text-white, .text-gray-500 {
+             color: #1f2937 !important; /* gray-800 */
+          }
+          .text-green-400 {
+             color: #15803d !important; /* green-700 */
+          }
+          .text-red-400, .text-red-500 {
+             color: #b91c1c !important; /* red-700 */
+          }
+          .text-yellow-400 {
+             color: #b45309 !important; /* yellow-700 */
+          }
+          .text-blue-400 {
+             color: #1d4ed8 !important; /* blue-700 */
+          }
+          
+          .border-slate-700 {
+             border-color: #e5e7eb !important; /* gray-200 */
+          }
+          
+          .bg-slate-900, .bg-secondary, .bg-slate-800, .bg-slate-950\/30 {
+             background-color: white !important;
+          }
+          
+          /* Keep visual indicators (risk bars) exact */
+          .bg-red-500 {
+             background-color: #ef4444 !important;
+             -webkit-print-color-adjust: exact;
+          }
+        }
+      `}</style>
+
+      <div id="report-container" className="bg-secondary w-full max-w-4xl h-[90vh] print:h-auto rounded-2xl border border-slate-700 flex flex-col shadow-2xl overflow-hidden print:overflow-visible print:block print:rounded-none">
+        
+        {/* Header */}
+        <div className="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-900/50 print:bg-white print:border-black print:pb-4">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2 print:text-black">
+              <AlertOctagon className="text-red-500 print:text-red-600" />
+              Suspicious Transaction Report
+            </h2>
+            <div className="flex flex-col">
+                <p className="text-slate-400 text-sm mt-1 print:text-gray-600">Generated by FinCompliance-AI • Ref: {tx.id}</p>
+                <p className="hidden print:block text-xs text-gray-500 font-mono mt-1">CONFIDENTIAL • FIU-IND COMPLIANT</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 no-print">
+            <button 
+                onClick={handleDownloadPDF}
+                className="flex items-center gap-2 text-slate-400 hover:text-accent transition-colors bg-slate-800/50 hover:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700"
+                title="Print or Save as PDF"
+            >
+                <Printer size={18} />
+                <span className="hidden sm:inline font-medium text-sm">Print / PDF</span>
+            </button>
+            <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">Close</button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 print:overflow-visible print:h-auto print:block">
+          
+          {/* Success Banner (Screen Only) */}
+          {filingComplete && fiuRef && (
+            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 flex items-start gap-3 animate-in fade-in slide-in-from-top-2 no-print">
+                <CheckCircle className="text-green-500 mt-0.5 shrink-0" size={20} />
+                <div>
+                    <h4 className="text-green-400 font-semibold text-sm">STR Filed Successfully</h4>
+                    <p className="text-green-500/80 text-xs mt-1">
+                        This report has been officially submitted to the FIU-IND regulatory gateway.
+                        <br />
+                        Reference ID: <span className="font-mono font-bold text-green-300 select-all">{fiuRef}</span>
+                    </p>
+                </div>
+            </div>
+          )}
+          
+          {/* Transaction Details Section */}
+          <div className="bg-slate-900 p-5 rounded-lg border border-slate-700 print:bg-white print:border-gray-300 print:text-black break-inside-avoid">
+              <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4 border-b border-slate-700 pb-2 flex items-center gap-2 print:text-black print:border-gray-300">
+                <Info size={16} className="text-accent print:hidden" />
+                Transaction Details
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6">
+                  <div>
+                    <span className="text-xs text-slate-500 block mb-1 uppercase tracking-wide print:text-gray-600">Transaction ID</span>
+                    <span className="text-sm font-mono text-white print:text-black">{tx.id}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 block mb-1 uppercase tracking-wide print:text-gray-600">Timestamp</span>
+                    <span className="text-sm font-mono text-white print:text-black">{new Date(tx.timestamp).toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 block mb-1 uppercase tracking-wide print:text-gray-600">Amount</span>
+                    <span className="text-sm font-medium text-white print:text-black">{tx.amount.toLocaleString('en-IN')} {tx.currency}</span>
+                  </div>
+                   <div>
+                    <span className="text-xs text-slate-500 block mb-1 uppercase tracking-wide print:text-gray-600">Jurisdiction</span>
+                    <span className="text-sm font-medium text-white print:text-black">{tx.jurisdiction}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 block mb-1 uppercase tracking-wide print:text-gray-600">Sender</span>
+                    <span className="text-sm font-medium text-white print:text-black">{tx.sender}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 block mb-1 uppercase tracking-wide print:text-gray-600">Receiver</span>
+                    <span className="text-sm font-medium text-white print:text-black">{tx.receiver}</span>
+                  </div>
+              </div>
+          </div>
+
+          {/* Risk Score Card */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 break-inside-avoid">
+            <div className="bg-slate-900 p-4 rounded-lg border border-slate-700 print:bg-white print:border-gray-300">
+               <p className="text-xs text-slate-500 uppercase font-bold print:text-black">Risk Score</p>
+               <div className="flex items-end gap-2 mt-2">
+                 <span className="text-4xl font-bold text-white print:text-black">{(risk.totalScore * 100).toFixed(0)}</span>
+                 <span className="text-sm text-slate-400 mb-1 print:text-black">/ 100</span>
+               </div>
+               <div className="w-full bg-slate-800 h-2 mt-3 rounded-full overflow-hidden print:bg-gray-200 border border-slate-700/50 print:border-0">
+                 <div className="bg-red-500 h-full print:bg-red-600" style={{ width: `${risk.totalScore * 100}%` }}></div>
+               </div>
+            </div>
+
+            <div className="col-span-2 bg-slate-900 p-4 rounded-lg border border-slate-700 print:bg-white print:border-gray-300">
+              <p className="text-xs text-slate-500 uppercase font-bold mb-3 print:text-black">Scoring Breakdown</p>
+              <div className="space-y-2 mb-4">
+                <div className="flex justify-between text-sm">
+                   <span className="text-slate-300 print:text-black">RBI Rules Engine (80%)</span>
+                   <span className="text-yellow-400 font-mono print:text-black font-bold">{(risk.rulesScore * 100).toFixed(0)}/100</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                   <span className="text-slate-300 print:text-black">XGBoost ML Model (10%)</span>
+                   <span className="text-purple-400 font-mono print:text-black font-bold">{(risk.xgBoostScore * 100).toFixed(0)}/100</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                   <span className="text-slate-300 print:text-black">Oumi (Gemini) LLM (10%)</span>
+                   <span className="text-pink-400 font-mono print:text-black font-bold">{(risk.oumiScore * 100).toFixed(0)}/100</span>
+                </div>
+              </div>
+
+              {risk.factors && risk.factors.length > 0 && (
+                <div className="pt-3 border-t border-slate-700 print:border-gray-300 animate-in slide-in-from-top-2 fade-in duration-500">
+                  <p className="text-xs text-slate-400 uppercase font-bold mb-2 flex items-center gap-1 print:text-black">
+                     <AlertTriangle size={12} className="text-yellow-500 print:text-black" />
+                     Identified Risk Factors
+                  </p>
+                  <ul className="space-y-1">
+                    {risk.factors.map((factor, idx) => (
+                      <li key={idx} className="text-xs text-red-400 flex items-start gap-2 print:text-red-700">
+                        <span className="mt-1.5 w-1 h-1 bg-red-500 rounded-full shrink-0 print:bg-red-700"></span>
+                        {factor}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Oumi Narrative */}
+          <div className="bg-slate-900 rounded-lg border border-slate-700 overflow-hidden print:bg-white print:border-gray-300 break-inside-avoid">
+            <div className="bg-slate-800/50 px-4 py-3 border-b border-slate-700 flex justify-between items-center print:bg-gray-100 print:border-gray-300">
+               <h3 className="font-semibold text-slate-200 flex items-center gap-2 print:text-black">
+                 <Bot size={18} className="text-pink-400 print:text-black" />
+                 Oumi Generated Narrative (Indian English)
+               </h3>
+               <span className="text-xs bg-green-900/30 text-green-400 px-2 py-1 rounded border border-green-500/30 flex items-center gap-1 print:border-black print:text-black">
+                 <Check size={12} /> CodeRabbit Approved
+               </span>
+            </div>
+            <div className="p-4 text-slate-300 text-sm leading-relaxed font-serif italic bg-slate-950/30 print:text-black print:bg-white text-justify">
+              "{report.narrative}"
+            </div>
+          </div>
+
+          {/* XML Payload */}
+          <div className="bg-slate-900 rounded-lg border border-slate-700 overflow-hidden print:bg-white print:border-gray-300 break-inside-avoid">
+            <div className="bg-slate-800/50 px-4 py-3 border-b border-slate-700 flex justify-between items-center print:bg-gray-100 print:border-gray-300">
+               <h3 className="font-semibold text-slate-200 flex items-center gap-2 print:text-black">
+                 <FileCode size={18} className="text-blue-400 print:text-blue-600" />
+                 FIU-IND XML Payload (lxml generated)
+               </h3>
+               <button onClick={handleDownloadXML} className="text-xs flex items-center gap-1 bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded transition-colors no-print border border-slate-600">
+                  <FileDown size={12} /> Save XML
+               </button>
+            </div>
+            <pre className="p-4 text-xs font-mono text-green-400 bg-black overflow-x-auto print:bg-white print:text-black print:whitespace-pre-wrap print:border-t print:border-gray-300">
+              {report.xmlPayload}
+            </pre>
+          </div>
+          
+        </div>
+
+        {/* Footer actions */}
+        <div className="p-4 border-t border-slate-700 bg-slate-900/50 flex justify-end gap-3 no-print">
+          <button 
+            onClick={handleDownloadPDF}
+            className="px-4 py-2 rounded-lg bg-slate-700 text-white hover:bg-slate-600 text-sm font-medium flex items-center gap-2 transition-colors"
+          >
+            <Download size={16} />
+            Download PDF
+          </button>
+          
+          <button 
+            onClick={handleFileReport}
+            disabled={isFiling || filingComplete}
+            className={`
+                px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all
+                ${filingComplete 
+                    ? 'bg-green-600/20 text-green-400 border border-green-500/50 cursor-default' 
+                    : 'bg-accent hover:bg-blue-600 text-white shadow-lg shadow-blue-500/20'}
+            `}
+          >
+            {isFiling ? (
+                <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Filing with FIU-IND...
+                </>
+            ) : filingComplete ? (
+                <>
+                    <CheckCircle size={16} />
+                    Filed (Ref: #{fiuRef || 'FIU-PENDING'})
+                </>
+            ) : (
+                <>
+                    <Send size={16} />
+                    File with FIU-IND
+                </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ReportView;

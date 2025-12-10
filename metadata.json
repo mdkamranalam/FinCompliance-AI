@@ -1,0 +1,5 @@
+{
+  "name": "FinCompliance-AI",
+  "description": "RBI/PMLA Suspicious Transaction Reporting automation system integrating Cline, Kestra, Vercel, Oumi, and CodeRabbit.",
+  "requestFramePermissions": []
+}
