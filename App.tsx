@@ -4,20 +4,42 @@ import TransactionForm from './components/TransactionForm';
 import KestraOrchestrator from './components/KestraOrchestrator';
 import ClineWidget from './components/ClineWidget';
 import ReportView from './components/ReportView';
-import { Transaction, AppState, RiskAnalysis, STRReport, RiskLevel } from './types';
+import { Transaction, AppState, RiskScore, STRReport, RiskLevel } from './types';
 import { generateSTRAnalysis } from './services/geminiService';
 import { LayoutDashboard, Github, Layers } from 'lucide-react';
 
 const INITIAL_TRANSACTIONS: Transaction[] = [
-  { id: 'TX-1001', amount: 50000, currency: 'INR', sender: 'Amit Sharma', receiver: 'Local Vendors', jurisdiction: 'India', timestamp: new Date().toISOString(), status: 'Processed' },
-  { id: 'TX-1002', amount: 120000, currency: 'INR', sender: 'Tech Corp', receiver: 'Cloud Services', jurisdiction: 'USA', timestamp: new Date().toISOString(), status: 'Processed' },
+  { 
+      id: 'TX-1001', 
+      amount: 50000, 
+      currency: 'INR', 
+      from_account: 'ACC-8892-IN (Amit Sharma)', 
+      to_account: 'ACC-1123-IN (Local Vendors)', 
+      receiver_country: 'India', 
+      type: 'NEFT',
+      location: 'Delhi Branch',
+      timestamp: new Date().toISOString(), 
+      status: 'Processed' 
+  },
+  { 
+      id: 'TX-1002', 
+      amount: 120000, 
+      currency: 'INR', 
+      from_account: 'ACC-4432-US (Tech Corp)', 
+      to_account: 'ACC-9988-US (Cloud Services)', 
+      receiver_country: 'USA', 
+      type: 'WIRE',
+      location: 'Bangalore Branch',
+      timestamp: new Date().toISOString(), 
+      status: 'Processed' 
+  },
 ];
 
 function App() {
   const [state, setState] = useState<AppState>({
     transactions: INITIAL_TRANSACTIONS,
     selectedTxId: null,
-    riskAnalyses: {},
+    riskScores: {},
     reports: {},
     isProcessing: false,
     processingStatus: '',
@@ -41,19 +63,25 @@ function App() {
         transactions: [...prev.transactions, newTx] 
     }));
 
-    // Simulate Kestra Pipeline Delays
     // Step 2: Rules Engine
     await new Promise(r => setTimeout(r, 1500));
-    setState(prev => ({ ...prev, kestraStep: 2, processingStatus: 'Running RBI Rules Engine...' }));
+    setState(prev => ({ ...prev, kestraStep: 2, processingStatus: 'Running RBI Rules Engine & Velocity Checks...' }));
 
     // Step 3: ML Scoring
     await new Promise(r => setTimeout(r, 1500));
     setState(prev => ({ ...prev, kestraStep: 3, processingStatus: 'Calculating XGBoost Risk Score...' }));
     
     // Logic: If Seychelles/BVI -> High Risk
-    const isHighRisk = ['Seychelles', 'BVI', 'Cayman'].includes(newTx.jurisdiction);
-    const rulesScore = isHighRisk ? 0.95 : 0.1;
-    const xgBoostScore = isHighRisk ? 0.92 : 0.15;
+    const isHighRiskJurisdiction = ['Seychelles', 'BVI', 'Cayman'].includes(newTx.receiver_country);
+    const rulesScore = isHighRiskJurisdiction ? 95 : 10; // 0-100
+    
+    // Logic: Velocity Check (High transaction volume for sender)
+    const senderTxCount = state.transactions.filter(t => t.from_account === newTx.from_account).length + 1;
+    const isHighVelocity = senderTxCount >= 3;
+    const velocityScore = isHighVelocity ? 85 : 10;
+
+    // ML Score
+    const xgBoostScore = (isHighRiskJurisdiction || isHighVelocity) ? 92 : 15;
     
     // Step 4: Oumi/Gemini AI
     await new Promise(r => setTimeout(r, 1000));
@@ -61,27 +89,40 @@ function App() {
     
     let aiResult = { narrative: "Standard commercial transaction.", xml: "<Transaction>...</Transaction>" };
     
+    const isHighRisk = isHighRiskJurisdiction || isHighVelocity;
+
     // Only call AI if medium/high risk to save tokens, or if explicit demo request
     if (isHighRisk) {
         aiResult = await generateSTRAnalysis(newTx);
     }
 
-    const oumiScore = isHighRisk ? 0.98 : 0.05;
-    const totalScore = (rulesScore * 0.8) + (xgBoostScore * 0.1) + (oumiScore * 0.1);
+    const oumiScore = isHighRisk ? 98 : 5;
+    
+    // Weighted Score: Rules (60%) + Velocity (20%) + ML (10%) + Oumi (10%)
+    const totalScore = Math.round((rulesScore * 0.6) + (velocityScore * 0.2) + (xgBoostScore * 0.1) + (oumiScore * 0.1));
 
-    const riskAnalysis: RiskAnalysis = {
-        transactionId: newTx.id,
-        totalScore,
-        rulesScore,
-        xgBoostScore,
-        oumiScore,
-        factors: isHighRisk ? ['High Risk Jurisdiction', 'Shell Company Indicators'] : [],
-        level: totalScore > 0.7 ? RiskLevel.CRITICAL : RiskLevel.LOW
+    const reasons = [];
+    if (isHighRiskJurisdiction) reasons.push('High Risk Jurisdiction (RBI List)');
+    if (isHighVelocity) reasons.push(`High Velocity (${senderTxCount} recent txns)`);
+    if (newTx.amount > 1000000) reasons.push('High Value Transaction (> 10L)');
+
+    const riskScore: RiskScore = {
+        transaction_id: newTx.id,
+        score: totalScore,
+        risk_level: totalScore > 70 ? RiskLevel.CRITICAL : RiskLevel.LOW,
+        explanation: "Auto-generated risk assessment based on schema rules.",
+        reasons: reasons,
+        breakdown: {
+            rules: rulesScore,
+            velocity: velocityScore,
+            xgboost: xgBoostScore,
+            oumi: oumiScore
+        }
     };
 
     const strReport: STRReport = {
         id: `STR-${newTx.id}`,
-        transactionId: newTx.id,
+        transaction_id: newTx.id,
         narrative: aiResult.narrative,
         xmlPayload: aiResult.xml,
         generatedAt: new Date().toISOString(),
@@ -89,24 +130,29 @@ function App() {
     };
 
     // Step 5: Filing (Simulate API Call to FIU)
-    setState(prev => ({ ...prev, kestraStep: 5, processingStatus: 'Auto-filing STR with FIU-IND...' }));
-    await new Promise(r => setTimeout(r, 1500));
-    
-    // Finalize: Step 6 (Done)
-    setState(prev => {
-        const updatedTxs = prev.transactions.map(t => 
-            t.id === newTx.id ? { ...t, status: isHighRisk ? 'Flagged' : 'Processed' } as Transaction : t
-        );
-        return {
-            ...prev,
-            transactions: updatedTxs,
-            riskAnalyses: { ...prev.riskAnalyses, [newTx.id]: riskAnalysis },
-            reports: { ...prev.reports, [newTx.id]: strReport },
-            isProcessing: false,
-            processingStatus: '',
-            kestraStep: 6 // Workflow Complete
-        };
-    });
+    try {
+        setState(prev => ({ ...prev, kestraStep: 5, processingStatus: 'Auto-filing STR with FIU-IND...' }));
+        await new Promise(r => setTimeout(r, 1500));
+        
+        // Finalize: Step 6 (Done)
+        setState(prev => {
+            const updatedTxs = prev.transactions.map(t => 
+                t.id === newTx.id ? { ...t, status: isHighRisk ? 'Flagged' : 'Processed' } as Transaction : t
+            );
+            return {
+                ...prev,
+                transactions: updatedTxs,
+                riskScores: { ...prev.riskScores, [newTx.id]: riskScore },
+                reports: { ...prev.reports, [newTx.id]: strReport },
+                isProcessing: false,
+                processingStatus: '',
+                kestraStep: 6 // Workflow Complete
+            };
+        });
+    } catch (error) {
+        console.error("Workflow failed", error);
+        setState(prev => ({ ...prev, isProcessing: false, processingStatus: 'Error', kestraStep: 0 }));
+    }
   };
 
   const selectedTx = state.selectedTxId ? state.transactions.find(t => t.id === state.selectedTxId) : null;
@@ -184,10 +230,10 @@ function App() {
       </main>
 
       {/* Overlays */}
-      {selectedTx && state.riskAnalyses[selectedTx.id] && state.reports[selectedTx.id] && (
+      {selectedTx && state.riskScores[selectedTx.id] && state.reports[selectedTx.id] && (
         <ReportView 
           tx={selectedTx} 
-          risk={state.riskAnalyses[selectedTx.id]}
+          risk={state.riskScores[selectedTx.id]}
           report={state.reports[selectedTx.id]}
           onClose={() => setState(prev => ({ ...prev, selectedTxId: null }))}
         />

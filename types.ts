@@ -5,42 +5,53 @@ export enum RiskLevel {
   CRITICAL = 'Critical'
 }
 
+// Aligned with 'transactions' table schema
 export interface Transaction {
-  id: string;
+  id: string; // Using string to maintain "TX-1001" format for demo, corresponds to 'id' (int) in DB
   amount: number;
-  currency: string;
-  sender: string;
-  receiver: string;
-  jurisdiction: string;
+  currency: string; // UI helper, assumed part of amount or separate
+  from_account: string; // Schema: from_account
+  to_account: string;   // Schema: to_account
+  type: string;         // Schema: type (e.g., WIRE, NEFT)
+  location: string;     // Schema: location
+  receiver_country: string; // Schema: receiver_country
   timestamp: string;
-  status: 'Pending' | 'Processed' | 'Flagged';
+  status: 'Pending' | 'Processed' | 'Flagged'; // UI State
 }
 
-export interface RiskAnalysis {
-  transactionId: string;
-  totalScore: number; // 0 to 1
-  rulesScore: number;
-  xgBoostScore: number;
-  oumiScore: number;
-  factors: string[];
-  level: RiskLevel;
+// Aligned with 'risk_scores' table schema
+export interface RiskScore {
+  transaction_id: string;
+  score: number; // Schema: score (int 0-100)
+  risk_level: RiskLevel; // Schema: risk_level
+  explanation: string; // Schema: explanation
+  reasons: string[]; // Schema: reasons
+  
+  // UI Breakdown (Transient state, not necessarily in risk_scores table but needed for visualization)
+  breakdown: {
+    rules: number;
+    velocity: number;
+    xgboost: number;
+    oumi: number;
+  };
 }
 
+// Aligned with 'str_reports' table schema
 export interface STRReport {
   id: string;
-  transactionId: string;
-  narrative: string;
-  xmlPayload: string;
+  transaction_id: string;
+  narrative: string; // Schema: grounds_of_suspicion
+  xmlPayload: string; // Helper for FIU XML
   generatedAt: string;
-  isFiled: boolean;
+  isFiled: boolean; // Schema: status (string)
 }
 
 export interface AppState {
   transactions: Transaction[];
   selectedTxId: string | null;
-  riskAnalyses: Record<string, RiskAnalysis>;
+  riskScores: Record<string, RiskScore>;
   reports: Record<string, STRReport>;
   isProcessing: boolean;
   processingStatus: string;
-  kestraStep: number; // 0: Idle, 1: Ingest, 2: Rules, 3: ML, 4: AI, 5: Filing, 6: Done
+  kestraStep: number;
 }

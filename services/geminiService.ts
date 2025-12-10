@@ -11,16 +11,18 @@ export const generateSTRAnalysis = async (tx: Transaction): Promise<{ narrative:
     
     Task: Generate a suspicious transaction narrative and a mock XML snippet for the following transaction.
     
-    Transaction Details:
+    Transaction Details (Schema: transactions table):
     - ID: ${tx.id}
     - Amount: ${tx.amount} ${tx.currency}
-    - Sender: ${tx.sender}
-    - Receiver: ${tx.receiver}
-    - Jurisdiction: ${tx.jurisdiction}
+    - From Account: ${tx.from_account}
+    - To Account: ${tx.to_account}
+    - Receiver Country: ${tx.receiver_country}
+    - Type: ${tx.type}
+    - Location: ${tx.location}
     - Date: ${new Date().toISOString()}
 
     Requirements:
-    1. Narrative: Written in formal Indian English, highlighting the risk factors (e.g., high-risk jurisdiction, round-tripping suspicion). Keep it under 150 words.
+    1. Narrative: Written in formal Indian English, highlighting the risk factors (e.g., high-risk jurisdiction '${tx.receiver_country}', transaction type '${tx.type}', or volume). Keep it under 150 words.
     2. XML: A small valid XML snippet following the FIU-IND report format (just the main transaction node).
     
     Output Format (JSON):

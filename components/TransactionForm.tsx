@@ -12,9 +12,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, isLoading, 
   const [formData, setFormData] = useState({
     amount: 250000,
     currency: 'INR',
-    sender: 'Rajesh Kumar',
-    receiver: 'Offshore Entity Ltd',
-    jurisdiction: 'Seychelles',
+    from_account: 'ACC-8892-IN (Rajesh Kumar)',
+    to_account: 'ACC-9921-OFF (Offshore Entity)',
+    receiver_country: 'Seychelles',
+    type: 'SWIFT',
+    location: 'Mumbai Branch',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -31,12 +33,12 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, isLoading, 
       
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Sender Name</label>
+          <label className="block text-xs font-medium text-slate-500 mb-1">From Account (Sender)</label>
           <input
             type="text"
             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
-            value={formData.sender}
-            onChange={(e) => setFormData({...formData, sender: e.target.value})}
+            value={formData.from_account}
+            onChange={(e) => setFormData({...formData, from_account: e.target.value})}
           />
         </div>
         
@@ -65,21 +67,46 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, isLoading, 
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Receiver</label>
+          <label className="block text-xs font-medium text-slate-500 mb-1">To Account (Receiver)</label>
           <input
             type="text"
             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
-            value={formData.receiver}
-            onChange={(e) => setFormData({...formData, receiver: e.target.value})}
+            value={formData.to_account}
+            onChange={(e) => setFormData({...formData, to_account: e.target.value})}
           />
         </div>
 
+        <div className="grid grid-cols-2 gap-4">
+            <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Type</label>
+                <select
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                    value={formData.type}
+                    onChange={(e) => setFormData({...formData, type: e.target.value})}
+                >
+                    <option value="SWIFT">SWIFT</option>
+                    <option value="NEFT">NEFT</option>
+                    <option value="RTGS">RTGS</option>
+                    <option value="WIRE">WIRE</option>
+                </select>
+            </div>
+            <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Location</label>
+                <input
+                    type="text"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
+                    value={formData.location}
+                    onChange={(e) => setFormData({...formData, location: e.target.value})}
+                />
+            </div>
+        </div>
+
         <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Jurisdiction</label>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Receiver Country</label>
           <select
             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent"
-            value={formData.jurisdiction}
-            onChange={(e) => setFormData({...formData, jurisdiction: e.target.value})}
+            value={formData.receiver_country}
+            onChange={(e) => setFormData({...formData, receiver_country: e.target.value})}
           >
             <option value="India">India (Domestic)</option>
             <option value="USA">USA</option>
