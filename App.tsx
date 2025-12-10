@@ -9,30 +9,30 @@ import { generateSTRAnalysis, fetchRealTimeTransactions } from './services/gemin
 import { LayoutDashboard, Github, Layers } from 'lucide-react';
 
 const INITIAL_TRANSACTIONS: Transaction[] = [
-  { 
-      id: 'TX-1001', 
-      amount: 50000, 
-      currency: 'INR', 
-      from_account: 'ACC-8892-IN (Amit Sharma)', 
-      to_account: 'ACC-1123-IN (Local Vendors)', 
-      receiver_country: 'India', 
-      type: 'NEFT',
-      location: 'Delhi Branch',
-      timestamp: new Date().toISOString(), 
-      status: 'Processed' 
-  },
-  { 
-      id: 'TX-1002', 
-      amount: 120000, 
-      currency: 'INR', 
-      from_account: 'ACC-4432-US (Tech Corp)', 
-      to_account: 'ACC-9988-US (Cloud Services)', 
-      receiver_country: 'USA', 
-      type: 'WIRE',
-      location: 'Bangalore Branch',
-      timestamp: new Date().toISOString(), 
-      status: 'Processed' 
-  },
+  // { 
+  //     id: 'TX-1001', 
+  //     amount: 50000, 
+  //     currency: 'INR', 
+  //     from_account: 'ACC-8892-IN (Amit Sharma)', 
+  //     to_account: 'ACC-1123-IN (Local Vendors)', 
+  //     receiver_country: 'India', 
+  //     type: 'NEFT',
+  //     location: 'Delhi Branch',
+  //     timestamp: new Date().toISOString(), 
+  //     status: 'Processed' 
+  // },
+  // { 
+  //     id: 'TX-1002', 
+  //     amount: 120000, 
+  //     currency: 'INR', 
+  //     from_account: 'ACC-4432-US (Tech Corp)', 
+  //     to_account: 'ACC-9988-US (Cloud Services)', 
+  //     receiver_country: 'USA', 
+  //     type: 'WIRE',
+  //     location: 'Bangalore Branch',
+  //     timestamp: new Date().toISOString(), 
+  //     status: 'Processed' 
+  // },
 ];
 
 const INITIAL_RISK_SCORES: Record<string, RiskScore> = {
