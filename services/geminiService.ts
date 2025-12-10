@@ -1,9 +1,10 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { Transaction } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export const generateSTRAnalysis = async (tx: Transaction): Promise<{ narrative: string; xml: string }> => {
+export const generateSTRAnalysis = async (tx: Transaction, velocityCount: number = 1): Promise<{ narrative: string; xml: string }> => {
   const model = "gemini-2.5-flash";
   
   const prompt = `
@@ -20,9 +21,10 @@ export const generateSTRAnalysis = async (tx: Transaction): Promise<{ narrative:
     - Type: ${tx.type}
     - Location: ${tx.location}
     - Date: ${new Date().toISOString()}
+    - Account Velocity: ${velocityCount} transaction(s) from this account in the current session.
 
     Requirements:
-    1. Narrative: Written in formal Indian English, highlighting the risk factors (e.g., high-risk jurisdiction '${tx.receiver_country}', transaction type '${tx.type}', or volume). Keep it under 150 words.
+    1. Narrative: Written in formal Indian English, highlighting risk factors. specifically mention the high velocity of transactions from the sender account if the count is greater than 2. Also flag high-risk jurisdictions ('${tx.receiver_country}'). Keep it under 150 words.
     2. XML: A small valid XML snippet following the FIU-IND report format (just the main transaction node).
     
     Output Format (JSON):

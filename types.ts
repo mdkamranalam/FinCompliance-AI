@@ -1,3 +1,4 @@
+
 export enum RiskLevel {
   LOW = 'Low',
   MEDIUM = 'Medium',
@@ -26,6 +27,7 @@ export interface RiskScore {
   risk_level: RiskLevel; // Schema: risk_level
   explanation: string; // Schema: explanation
   reasons: string[]; // Schema: reasons
+  velocity_count?: number; // Added to track specific transaction count for reporting
   
   // UI Breakdown (Transient state, not necessarily in risk_scores table but needed for visualization)
   breakdown: {

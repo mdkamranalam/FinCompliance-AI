@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Transaction, RiskScore, STRReport } from '../types';
-import { FileCode, AlertOctagon, Check, Bot, Download, Send, Loader2, CheckCircle, Info, FileDown, Printer, AlertTriangle } from 'lucide-react';
+import { FileCode, AlertOctagon, Check, Bot, Download, Send, Loader2, CheckCircle, Info, FileDown, Printer, AlertTriangle, Activity } from 'lucide-react';
 
 interface ReportViewProps {
   tx: Transaction;
@@ -208,6 +208,36 @@ const ReportView: React.FC<ReportViewProps> = ({ tx, risk, report, onClose }) =>
                    <span className="text-pink-400 font-mono print:text-black font-bold">{risk.breakdown.oumi}/100</span>
                 </div>
               </div>
+
+              {/* Account Velocity Details */}
+              {risk.velocity_count && risk.velocity_count > 1 && (
+                <div className="mb-4 pt-3 border-t border-slate-700 print:border-gray-300">
+                   <div className="flex justify-between items-center mb-2">
+                      <p className={`text-xs uppercase font-bold flex items-center gap-1 print:text-black ${risk.velocity_count >= 3 ? 'text-red-400' : 'text-slate-400'}`}>
+                         <Activity size={12} className={risk.velocity_count >= 3 ? 'text-red-400' : 'text-blue-400 print:text-black'} />
+                         {risk.velocity_count >= 3 ? 'High Velocity Alert' : 'Account Velocity'}
+                      </p>
+                   </div>
+                   <div className="bg-slate-800/50 rounded p-3 border border-slate-700/50 print:bg-white print:border-gray-200">
+                       <div className="flex justify-between items-center mb-1">
+                           <span className="text-xs text-slate-400 print:text-black">Account</span>
+                           <span className="text-xs font-mono text-slate-300 print:text-black truncate max-w-[150px]">{tx.from_account}</span>
+                       </div>
+                       <div className="flex justify-between items-center">
+                           <span className="text-xs text-slate-400 print:text-black">Session Frequency</span>
+                           <div className="flex items-center gap-2">
+                               <div className="flex gap-0.5">
+                                   {[...Array(Math.min(5, risk.velocity_count))].map((_, i) => (
+                                       <div key={i} className={`w-1.5 h-3 rounded-sm ${risk.velocity_count >= 3 ? 'bg-red-500' : 'bg-accent'} print:bg-black`}></div>
+                                   ))}
+                                   {risk.velocity_count > 5 && <span className="text-xs text-accent ml-1">+</span>}
+                               </div>
+                               <span className="text-sm font-bold text-white print:text-black">{risk.velocity_count} Txns</span>
+                           </div>
+                       </div>
+                   </div>
+                </div>
+              )}
 
               {risk.reasons && risk.reasons.length > 0 && (
                 <div className="pt-3 border-t border-slate-700 print:border-gray-300 animate-in slide-in-from-top-2 fade-in duration-500">

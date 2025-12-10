@@ -76,9 +76,20 @@ function App() {
     const rulesScore = isHighRiskJurisdiction ? 95 : 10; // 0-100
     
     // Logic: Velocity Check (High transaction volume for sender)
+    // Count transactions from this sender in the current state (mocking a time window)
     const senderTxCount = state.transactions.filter(t => t.from_account === newTx.from_account).length + 1;
-    const isHighVelocity = senderTxCount >= 3;
-    const velocityScore = isHighVelocity ? 85 : 10;
+    
+    // Progressive Velocity Scoring
+    let velocityScore = 10;
+    if (senderTxCount >= 5) {
+        velocityScore = 95; // Critical velocity
+    } else if (senderTxCount >= 3) {
+        velocityScore = 80; // High velocity
+    } else if (senderTxCount === 2) {
+        velocityScore = 30; // Medium velocity
+    }
+
+    const isHighVelocity = velocityScore >= 80;
 
     // ML Score
     const xgBoostScore = (isHighRiskJurisdiction || isHighVelocity) ? 92 : 15;
@@ -93,13 +104,13 @@ function App() {
 
     // Only call AI if medium/high risk to save tokens, or if explicit demo request
     if (isHighRisk) {
-        aiResult = await generateSTRAnalysis(newTx);
+        aiResult = await generateSTRAnalysis(newTx, senderTxCount);
     }
 
     const oumiScore = isHighRisk ? 98 : 5;
     
-    // Weighted Score: Rules (60%) + Velocity (20%) + ML (10%) + Oumi (10%)
-    const totalScore = Math.round((rulesScore * 0.6) + (velocityScore * 0.2) + (xgBoostScore * 0.1) + (oumiScore * 0.1));
+    // Weighted Score: Rules (50%) + Velocity (30%) + ML (10%) + Oumi (10%)
+    const totalScore = Math.round((rulesScore * 0.5) + (velocityScore * 0.3) + (xgBoostScore * 0.1) + (oumiScore * 0.1));
 
     const reasons = [];
     if (isHighRiskJurisdiction) reasons.push('High Risk Jurisdiction (RBI List)');
@@ -112,6 +123,7 @@ function App() {
         risk_level: totalScore > 70 ? RiskLevel.CRITICAL : RiskLevel.LOW,
         explanation: "Auto-generated risk assessment based on schema rules.",
         reasons: reasons,
+        velocity_count: senderTxCount,
         breakdown: {
             rules: rulesScore,
             velocity: velocityScore,
