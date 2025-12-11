@@ -388,7 +388,7 @@ function App() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-             <a href="https://github.com" target="_blank" rel="noreferrer" className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-medium">
+             <a href="https://github.com/mdkamranalam/FinCompliance-AI" target="_blank" rel="noreferrer" className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-medium">
                 <Github size={18} />
                 <span className="hidden sm:inline">Repo</span>
              </a>
