@@ -258,23 +258,46 @@ const ReportView: React.FC<ReportViewProps> = ({ tx, risk, report, onClose }) =>
                   <h4 className="text-[11px] font-bold text-slate-400 uppercase mb-2 flex items-center gap-1.5 print:text-black">
                      <PieChart size={12} /> Score Composition Analysis
                   </h4>
+                  
+                  {/* Explanation summary from pipeline */}
+                  {risk.explanation && (
+                    <div className="mb-2 p-2 bg-slate-800/50 rounded border border-slate-700/50 text-xs text-slate-300 italic print:bg-gray-100 print:text-black print:border-gray-300">
+                        "{risk.explanation}"
+                    </div>
+                  )}
+
                   <p className="text-xs text-slate-300 leading-5 print:text-black text-justify">
-                    The composite risk score of <strong className="text-white print:text-black">{risk.score}/100</strong> is driven by a weighted aggregation of four engines. 
-                    The <strong>Rules Engine</strong> contributed {risk.breakdown.rules} points based on regulatory heuristics (Jurisdiction/Amount). 
-                    <strong>Velocity Checks</strong> added {risk.breakdown.velocity} points reflecting transaction frequency. 
-                    The <strong>XGBoost Model</strong> assigned a risk probability of {risk.breakdown.xgboost}% based on historical patterns, while 
-                    <strong>Oumi AI</strong> assessed the narrative context risk at {risk.breakdown.oumi}/100.
-                    {risk.score > 60 && (
-                        <span className="block mt-1.5 text-orange-300 print:text-orange-700 font-medium bg-orange-900/10 p-1.5 rounded border border-orange-500/20 print:bg-orange-50 print:border-orange-200">
-                           Primary Driver: {
-                               risk.breakdown.rules >= Math.max(risk.breakdown.velocity, risk.breakdown.xgboost, risk.breakdown.oumi) ? 'Regulatory Rule Violation' : 
-                               risk.breakdown.velocity >= Math.max(risk.breakdown.rules, risk.breakdown.xgboost, risk.breakdown.oumi) ? 'High Transaction Velocity' :
-                               risk.breakdown.xgboost >= Math.max(risk.breakdown.rules, risk.breakdown.velocity, risk.breakdown.oumi) ? 'ML Anomaly Detection' :
-                               'GenAI Contextual Risk'
-                           }
-                        </span>
-                    )}
+                    The composite risk score of <strong className="text-white print:text-black">{risk.score}/100</strong> is calculated using a weighted ensemble model:
                   </p>
+                  <ul className="mt-2 space-y-1.5 text-xs text-slate-400 list-disc list-inside print:text-gray-700">
+                    <li>
+                        <strong>Rules Engine (50%):</strong> Contributed <span className="text-slate-300 print:text-black">{risk.breakdown.rules}</span> points based on static regulatory heuristics (Jurisdiction/Amount).
+                    </li>
+                    <li>
+                        <strong>Velocity Engine (30%):</strong> Contributed <span className="text-slate-300 print:text-black">{risk.breakdown.velocity}</span> points based on transaction frequency.
+                    </li>
+                    <li>
+                        <strong>XGBoost ML (10%):</strong> Assessed probability of anomaly at <span className="text-slate-300 print:text-black">{risk.breakdown.xgboost}%</span> based on historical patterns.
+                    </li>
+                     <li>
+                        <strong>Oumi GenAI (10%):</strong> Analyzed narrative context risk at <span className="text-slate-300 print:text-black">{risk.breakdown.oumi}/100</span>.
+                    </li>
+                  </ul>
+
+                  {risk.score > 60 && (
+                        <div className="mt-3 text-orange-300 print:text-orange-700 font-medium bg-orange-900/10 p-2 rounded border border-orange-500/20 print:bg-orange-50 print:border-orange-200 text-xs flex gap-1.5 items-start">
+                           <Activity size={14} className="mt-0.5 shrink-0" />
+                           <div>
+                               <strong>Primary Risk Driver:</strong><br/>
+                               {
+                                   risk.breakdown.rules >= Math.max(risk.breakdown.velocity, risk.breakdown.xgboost, risk.breakdown.oumi) ? 'Regulatory Rule Violation (High-Risk Jurisdiction or Amount)' : 
+                                   risk.breakdown.velocity >= Math.max(risk.breakdown.rules, risk.breakdown.xgboost, risk.breakdown.oumi) ? 'High Transaction Velocity (Structuring/Smurfing Indicator)' :
+                                   risk.breakdown.xgboost >= Math.max(risk.breakdown.rules, risk.breakdown.velocity, risk.breakdown.oumi) ? 'ML Anomaly Detection (Deviates from user profile)' :
+                                   'GenAI Contextual Risk (Suspicious Narrative)'
+                               }
+                           </div>
+                        </div>
+                    )}
               </div>
 
               {risk.velocity_count && risk.velocity_count > 1 && (

@@ -87,10 +87,10 @@ const DEFAULT_RISK_CONFIG: RiskConfig = {
   highVelocityThreshold: 80,
   highRiskThreshold: 60,
   weights: {
-    rules: 0.5,
+    rules: 0.4,
     velocity: 0.3,
-    xgboost: 0.1,
-    oumi: 0.1
+    xgboost: 0.15,
+    oumi: 0.15
   },
   riskLevelThresholds: {
     critical: 80,
@@ -141,7 +141,17 @@ function App() {
       // Robust check for High Risk Jurisdictions
       const isHighRiskJurisdiction = config.highRiskJurisdictions.some(k => newTx.receiver_country.includes(k));
       
-      const rulesScore = isHighRiskJurisdiction ? config.jurisdictionScoreHigh : config.jurisdictionScoreLow;
+      // Check for Structuring (Amounts just below reporting thresholds, e.g., 9-10 Lakh INR)
+      const isStructuring = newTx.amount >= 900000 && newTx.amount < 1000000;
+      
+      let rulesScore = 10;
+      if (isHighRiskJurisdiction) {
+          rulesScore = config.jurisdictionScoreHigh;
+      } else if (isStructuring) {
+          rulesScore = 85; // High rule score for structuring attempts
+      } else {
+          rulesScore = config.jurisdictionScoreLow;
+      }
       
       // Use optimized velocity count if provided, otherwise calculate
       const senderTxCount = velocityOverride ?? (existingTxs.filter(t => t.from_account === newTx.from_account).length + 1);
@@ -165,10 +175,36 @@ function App() {
       }
 
       const isHighVelocity = velocityScore >= config.highVelocityThreshold;
-      const xgBoostScore = (isHighRiskJurisdiction || isHighVelocity) ? 92 : 15;
       
-      const oumiScore = (isHighRiskJurisdiction || isHighVelocity) ? 98 : 5;
+      // --- Improved Scoring Simulation for Bulk Data ---
+      const isRoundAmount = newTx.amount % 10000 === 0 && newTx.amount > 50000;
+      const isHighValue = newTx.amount > 1000000; // > 10L INR
       
+      // Expanded keyword list for shell/offshore entities
+      const shellKeywords = ['offshore', 'shell', 'holdings', 'trust', 'consulting', 'global', 'investments', 'capital', 'partners', 'fund'];
+      const hasShellKeyword = shellKeywords.some(kw => newTx.to_account.toLowerCase().includes(kw));
+
+      // XGBoost (Anomaly Detection Model) Simulation
+      // Factors: Unexpected high value, round numbers, velocity spikes, jurisdiction
+      let calculatedXgBoost = 15; // Baseline
+      if (isHighValue) calculatedXgBoost += 20; 
+      if (isRoundAmount) calculatedXgBoost += 15;
+      if (isHighVelocity) calculatedXgBoost += 35; // Correlation
+      if (isHighRiskJurisdiction) calculatedXgBoost += 10;
+      if (isLinkedSeries) calculatedXgBoost += 15;
+      const xgBoostScore = Math.min(99, calculatedXgBoost); // Cap at 99
+      
+      // Oumi (GenAI Contextual Model) Simulation
+      // Factors: Narrative risk (Country), Structuring patterns (Velocity), Name screening
+      let calculatedOumi = 10; // Baseline
+      if (isHighRiskJurisdiction) calculatedOumi += 40; // High confidence on jurisdiction
+      if (hasShellKeyword) calculatedOumi += 30; // Contextual name risk
+      if (isStructuring) calculatedOumi += 40; // Intent detection
+      if (isHighVelocity && isRoundAmount) calculatedOumi += 25; // Machine-like behavior pattern
+      if (newTx.type === 'CASH' || newTx.type === 'CRYPTO') calculatedOumi += 20; // Channel risk
+
+      const oumiScore = Math.min(99, calculatedOumi); // Cap at 99
+
       // Weighted Score Calculation
       const totalScore = Math.round(
           (rulesScore * config.weights.rules) + 
@@ -181,16 +217,20 @@ function App() {
       const riskLevel = determineRiskLevel(totalScore);
       const isHighRisk = totalScore >= config.highRiskThreshold; // Flag High and Critical
 
-      // Enhanced Narrative Generation (Replacing simple template with dynamic, detailed analysis)
+      // Enhanced Narrative Generation
       let narrative = "";
       if (isHighRisk) {
           const riskFactors = [];
           if (isHighRiskJurisdiction) riskFactors.push(`destination jurisdiction (${newTx.receiver_country})`);
           if (isHighVelocity) riskFactors.push(`transaction velocity (${senderTxCount} in session)`);
           if (isLinkedSeries) riskFactors.push("linked transaction pattern");
-          if (newTx.amount > 1000000) riskFactors.push("high value amount");
+          if (newTx.amount > 1000000) riskFactors.push("high value amount (>10L)");
+          if (isStructuring) riskFactors.push("potential structuring (amount just below threshold)");
+          if (hasShellKeyword) riskFactors.push("high risk counterparty keyword");
 
-          const typology = isHighVelocity || isLinkedSeries ? "Structuring (Smurfing)" : "Layering / Round-Tripping";
+          let typology = "Layering / Round-Tripping";
+          if (isStructuring || (isHighVelocity && newTx.amount < 50000)) typology = "Structuring (Smurfing)";
+          if (hasShellKeyword && isHighRiskJurisdiction) typology = "Shell Company Operations";
 
           narrative = `**Automated Risk Assessment (Batch Mode)**\n\n` +
                       `**Analysis**:\n` +
@@ -198,8 +238,10 @@ function App() {
                       `The primary risk drivers identified are: ${riskFactors.join(", ")}.\n\n` +
                       `**Typology Indicators**:\n` +
                       `The observed activity matches patterns associated with **${typology}**. ` +
+                      `${isStructuring ? `The amount (${newTx.amount}) is just below the mandatory reporting threshold of 10 Lakhs, strongly indicating an attempt to evade detection.` : ''} ` +
+                      `${hasShellKeyword ? `The beneficiary name contains keywords ('${shellKeywords.find(k => newTx.to_account.toLowerCase().includes(k))}') often associated with shell entities.` : ''} ` +
                       `${isHighRiskJurisdiction ? `Funds are moving to a high-risk jurisdiction (${newTx.receiver_country}) which requires enhanced due diligence.` : ''} ` +
-                      `${isHighVelocity ? `Rapid succession of transfers from ${newTx.from_account} suggests an attempt to evade reporting thresholds.` : ''}\n\n` +
+                      `${isHighVelocity ? `Rapid succession of transfers from ${newTx.from_account} suggests an attempt to evade velocity limits.` : ''}\n\n` +
                       `**Conclusion**:\n` +
                       `Due to the convergence of these risk factors, this transaction is marked as suspicious and an STR has been auto-generated for FIU-IND filing.`;
       } else {
@@ -234,7 +276,8 @@ function App() {
         <RiskIndicators>
           ${isHighRiskJurisdiction ? '<Indicator>High Risk Jurisdiction</Indicator>' : ''}
           ${isHighVelocity ? '<Indicator>High Velocity</Indicator>' : ''}
-          ${isLinkedSeries ? '<Indicator>Linked Series</Indicator>' : ''}
+          ${isStructuring ? '<Indicator>Structuring / Smurfing</Indicator>' : ''}
+          ${hasShellKeyword ? '<Indicator>Shell Company Suspected</Indicator>' : ''}
         </RiskIndicators>
       </RiskAssessment>
       <SuspicionDetails>
@@ -252,15 +295,24 @@ function App() {
       const reasons = [];
       if (isHighRiskJurisdiction) reasons.push(`High Risk Jurisdiction (${newTx.receiver_country})`);
       if (isHighVelocity) reasons.push(`High Velocity Alert (${senderTxCount} recent txns)`);
-      if (isLinkedSeries) reasons.push('Linked Transaction Series (Structuring Indicator)');
+      if (isStructuring) reasons.push('Potential Structuring (<10L INR)');
+      if (hasShellKeyword) reasons.push('Shell Company Indicators in Name');
+      if (isLinkedSeries) reasons.push('Linked Transaction Series');
       if (newTx.amount > 1000000) reasons.push('High Value Transaction (> 10L)');
 
       // Generate a dynamic and detailed explanation
       let explanation = "";
       if (isHighRisk) {
-        explanation = `High Risk detected due to ${reasons.length > 0 ? reasons.join(", ") : 'aggregate risk factors'}. The composite score of ${totalScore} indicates a strong match with money laundering typologies.`;
+        // Detailed high risk explanation
+        const drivers = [];
+        if (rulesScore > 50) drivers.push("Rules (Regulatory)");
+        if (velocityScore > 50) drivers.push("Velocity (Frequency)");
+        if (xgBoostScore > 60) drivers.push("XGBoost (Anomaly)");
+        if (oumiScore > 60) drivers.push("Oumi AI (Context)");
+        
+        explanation = `High Risk flagged (Score: ${totalScore}). Primary drivers: ${drivers.join(", ")}. This transaction deviates significantly from the user's standard profile and matches known ML typologies.`;
       } else if (riskLevel === RiskLevel.MEDIUM) {
-         explanation = `Moderate risk identified (${reasons.length > 0 ? reasons.join(", ") : 'unusual activity'}). Requires enhanced monitoring but does not meet automatic filing thresholds.`;
+         explanation = `Moderate risk (${totalScore}/100) identified due to ${reasons.length > 0 ? reasons[0] : 'unusual activity'}. Requires enhanced monitoring but does not meet automatic filing thresholds.`;
       } else {
          explanation = `Low risk transaction. Cleared by Rules Engine (Score: ${rulesScore}) and ML Model (Score: ${xgBoostScore}). No anomalies detected in velocity or jurisdiction.`;
       }
@@ -429,76 +481,27 @@ function App() {
     // Reuse the pipeline function to ensure consistent scoring logic
     const result = await runRiskPipeline(txData, state.transactions, senderTxCount);
     
-    // Manually calculating config logic for step-by-step display, but use pipeline results for the final object
-    const config = state.riskConfig;
-    const isHighRiskJurisdiction = config.highRiskJurisdictions.some(k => newTx.receiver_country.includes(k));
-    const rulesScore = isHighRiskJurisdiction ? config.jurisdictionScoreHigh : config.jurisdictionScoreLow;
-    
-    // Linked Series Check
-    const lastTx = state.transactions.length > 0 ? state.transactions[state.transactions.length - 1] : null;
-    const isLinkedSeries = lastTx && lastTx.from_account === newTx.from_account;
-
-    let velocityScore = 10;
-    if (senderTxCount >= config.velocityThresholds.critical.count) { velocityScore = config.velocityThresholds.critical.score; } 
-    else if (senderTxCount >= config.velocityThresholds.high.count) { velocityScore = config.velocityThresholds.high.score; } 
-    else if (senderTxCount >= config.velocityThresholds.medium.count) { velocityScore = config.velocityThresholds.medium.score; }
-
-    if (isLinkedSeries) {
-        velocityScore = Math.max(velocityScore + config.linkedSeriesBoost, config.linkedSeriesMinScore);
-    }
-
-    const isHighVelocity = velocityScore >= config.highVelocityThreshold;
-    const xgBoostScore = (isHighRiskJurisdiction || isHighVelocity) ? 92 : 15;
-    
-    const oumiScore = (isHighRiskJurisdiction || isHighVelocity) ? 98 : 5;
-    
-    const totalScore = Math.round(
-        (rulesScore * config.weights.rules) + 
-        (velocityScore * config.weights.velocity) + 
-        (xgBoostScore * config.weights.xgboost) + 
-        (oumiScore * config.weights.oumi)
-    );
-
-    // Determine Levels
-    const riskLevel = determineRiskLevel(totalScore);
-    const isHighRisk = totalScore >= config.highRiskThreshold;
+    // Recalculate component scores for local variables (used for consistency in logic) if needed, 
+    // but we can rely on result.riskScore for the actual stored object.
+    const riskScore = result.riskScore;
+    const strReport = result.strReport;
 
     // Step 4: Oumi/Gemini AI
     await new Promise(r => setTimeout(r, 1000));
     setState(prev => ({ ...prev, kestraStep: 4, processingStatus: 'Generating Oumi Narrative...' }));
     
     // Default to the enhanced narrative from pipeline
-    let aiResult = { narrative: result.strReport.narrative, xml: result.strReport.xmlPayload };
+    let aiResult = { narrative: strReport.narrative, xml: strReport.xmlPayload };
     
+    const isHighRisk = riskScore.risk_level === RiskLevel.HIGH || riskScore.risk_level === RiskLevel.CRITICAL;
+
     // For single ingest, we can afford to hit the real API for high risk cases to get even better uniqueness
     if (isHighRisk) {
         aiResult = await generateSTRAnalysis(newTx, senderTxCount);
+        // Update report with AI result if fetched
+        strReport.narrative = aiResult.narrative;
+        strReport.xmlPayload = aiResult.xml;
     }
-
-    const reasons = [];
-    if (isHighRiskJurisdiction) reasons.push(`High Risk Jurisdiction (${newTx.receiver_country})`);
-    if (isHighVelocity) reasons.push(`High Velocity Alert (${senderTxCount} recent txns)`);
-    if (isLinkedSeries) reasons.push('Linked Transaction Series (Structuring Indicator)');
-    if (newTx.amount > 1000000) reasons.push('High Value Transaction (> 10L)');
-
-    const riskScore: RiskScore = {
-        transaction_id: newTx.id,
-        score: totalScore,
-        risk_level: riskLevel,
-        explanation: result.riskScore.explanation,
-        reasons: reasons,
-        velocity_count: senderTxCount,
-        breakdown: { rules: rulesScore, velocity: velocityScore, xgboost: xgBoostScore, oumi: oumiScore }
-    };
-
-    const strReport: STRReport = {
-        id: `STR-${newTx.id}`,
-        transaction_id: newTx.id,
-        narrative: aiResult.narrative,
-        xmlPayload: aiResult.xml,
-        generatedAt: new Date().toISOString(),
-        isFiled: isHighRisk
-    };
 
     // Step 5: Filing
     try {
