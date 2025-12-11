@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Transaction } from '../types';
-import { Send, UploadCloud, Loader2, FileText, Globe } from 'lucide-react';
+import { Send, UploadCloud, Loader2, FileText, Globe, TestTube, Play } from 'lucide-react';
 
 interface TransactionFormProps {
   onSubmit: (tx: Omit<Transaction, 'id' | 'status' | 'timestamp'>) => void;
@@ -9,6 +9,35 @@ interface TransactionFormProps {
   isLoading: boolean;
   processingStatus?: string;
 }
+
+const TEST_SCENARIOS = {
+  structuring: [
+    { amount: 980000, currency: 'INR', from_account: 'ACC-8811-IN (Smurf A)', to_account: 'ACC-9900-IN (Main Corp)', receiver_country: 'India', type: 'NEFT', location: 'Delhi' },
+    { amount: 950000, currency: 'INR', from_account: 'ACC-8811-IN (Smurf A)', to_account: 'ACC-9900-IN (Main Corp)', receiver_country: 'India', type: 'NEFT', location: 'Delhi' },
+    { amount: 990000, currency: 'INR', from_account: 'ACC-8811-IN (Smurf A)', to_account: 'ACC-9900-IN (Main Corp)', receiver_country: 'India', type: 'NEFT', location: 'Delhi' },
+    { amount: 920000, currency: 'INR', from_account: 'ACC-8811-IN (Smurf A)', to_account: 'ACC-9900-IN (Main Corp)', receiver_country: 'India', type: 'NEFT', location: 'Delhi' },
+    { amount: 960000, currency: 'INR', from_account: 'ACC-8811-IN (Smurf A)', to_account: 'ACC-9900-IN (Main Corp)', receiver_country: 'India', type: 'NEFT', location: 'Delhi' },
+  ],
+  shell: [
+    { amount: 5000000, currency: 'USD', from_account: 'ACC-CORP-US (Mega Ind)', to_account: 'ACC-OFF-001 (Global Shell Holdings)', receiver_country: 'Cayman', type: 'SWIFT', location: 'Mumbai' },
+    { amount: 15000, currency: 'USD', from_account: 'ACC-CORP-US (Mega Ind)', to_account: 'ACC-OFF-002 (Trust Services Ltd)', receiver_country: 'BVI', type: 'WIRE', location: 'Mumbai' },
+    { amount: 750000, currency: 'EUR', from_account: 'ACC-CORP-US (Mega Ind)', to_account: 'ACC-OFF-003 (Panama Law Firm)', receiver_country: 'Panama', type: 'SWIFT', location: 'Mumbai' },
+  ],
+  fan_out: [
+    { amount: 150000, currency: 'INR', from_account: 'ACC-LAYER-1 (Source)', to_account: 'ACC-MULE-1 (Ramesh)', receiver_country: 'India', type: 'IMPS', location: 'Bangalore' },
+    { amount: 145000, currency: 'INR', from_account: 'ACC-LAYER-1 (Source)', to_account: 'ACC-MULE-2 (Suresh)', receiver_country: 'India', type: 'IMPS', location: 'Bangalore' },
+    { amount: 160000, currency: 'INR', from_account: 'ACC-LAYER-1 (Source)', to_account: 'ACC-MULE-3 (Mahesh)', receiver_country: 'India', type: 'IMPS', location: 'Bangalore' },
+    { amount: 155000, currency: 'INR', from_account: 'ACC-LAYER-1 (Source)', to_account: 'ACC-MULE-4 (Dinesh)', receiver_country: 'India', type: 'IMPS', location: 'Bangalore' },
+    { amount: 140000, currency: 'INR', from_account: 'ACC-LAYER-1 (Source)', to_account: 'ACC-MULE-5 (Ganesh)', receiver_country: 'India', type: 'IMPS', location: 'Bangalore' },
+  ],
+  mixed: [
+     { amount: 5000, currency: 'INR', from_account: 'ACC-USER-1 (Alice)', to_account: 'ACC-SHOP-1 (Grocery)', receiver_country: 'India', type: 'UPI', location: 'Pune' },
+     { amount: 2500000, currency: 'INR', from_account: 'ACC-USER-2 (Bob)', to_account: 'ACC-OFF-99 (Shell Co)', receiver_country: 'Mauritius', type: 'SWIFT', location: 'Mumbai' }, // High Risk
+     { amount: 12000, currency: 'INR', from_account: 'ACC-USER-1 (Alice)', to_account: 'ACC-SHOP-2 (Clothes)', receiver_country: 'India', type: 'UPI', location: 'Pune' },
+     { amount: 980000, currency: 'INR', from_account: 'ACC-SMURF-1', to_account: 'ACC-MAIN-1', receiver_country: 'India', type: 'NEFT', location: 'Delhi' }, // Structuring
+     { amount: 990000, currency: 'INR', from_account: 'ACC-SMURF-1', to_account: 'ACC-MAIN-1', receiver_country: 'India', type: 'NEFT', location: 'Delhi' }, // Structuring
+  ]
+};
 
 const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onBulkSubmit, onFetchLive, isLoading, processingStatus }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -21,6 +50,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onBulkSubmi
     type: 'SWIFT',
     location: 'Mumbai Branch',
   });
+  
+  const [selectedScenario, setSelectedScenario] = useState('structuring');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +60,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onBulkSubmi
 
   const handleFileClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleScenarioRun = () => {
+    if (!onBulkSubmit) return;
+    const scenarioData = TEST_SCENARIOS[selectedScenario as keyof typeof TEST_SCENARIOS];
+    if (scenarioData) {
+        onBulkSubmit(scenarioData);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,7 +170,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onBulkSubmi
   };
 
   return (
-    <div className="bg-secondary p-4 sm:p-6 rounded-xl border border-slate-700 h-full">
+    <div className="bg-secondary p-4 sm:p-6 rounded-xl border border-slate-700 h-full flex flex-col">
       <div className="flex items-center gap-2 mb-6 text-slate-300">
         <UploadCloud size={20} className="text-accent" />
         <h3 className="font-semibold">Ingest New Transaction</h3>
@@ -273,11 +312,39 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onBulkSubmi
                 className="hidden" 
             />
         </div>
-        
-        <p className="text-xs text-center text-slate-500 mt-2">
-            Triggers Kestra Workflow via FastAPI
-        </p>
       </form>
+
+      {/* Test Scenarios Section */}
+      <div className="mt-6 pt-4 border-t border-slate-700">
+        <label className="block text-xs font-medium text-slate-500 mb-2 flex items-center gap-2">
+           <TestTube size={14} className="text-purple-400" /> Test Scenarios
+        </label>
+        <div className="flex gap-2">
+            <select 
+                className="bg-slate-900 border border-slate-700 text-xs text-slate-300 rounded-lg px-2 py-2 flex-1 focus:outline-none focus:border-accent"
+                value={selectedScenario}
+                onChange={(e) => setSelectedScenario(e.target.value)}
+            >
+                <option value="structuring">Structuring / Smurfing</option>
+                <option value="shell">Shell Company / Offshore</option>
+                <option value="fan_out">Fan-Out (Layering)</option>
+                <option value="mixed">Mixed Traffic</option>
+            </select>
+            <button
+                type="button"
+                onClick={handleScenarioRun}
+                disabled={isLoading}
+                className="bg-purple-900/20 hover:bg-purple-900/40 text-purple-300 border border-purple-500/30 text-xs font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+            >
+                <Play size={12} fill="currentColor" />
+                Run
+            </button>
+        </div>
+      </div>
+      
+      <p className="text-xs text-center text-slate-500 mt-auto pt-4">
+        Simulates Kestra Workflow Pipeline
+      </p>
     </div>
   );
 };

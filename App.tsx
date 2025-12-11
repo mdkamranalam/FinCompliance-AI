@@ -8,70 +8,11 @@ import { Transaction, AppState, RiskScore, STRReport, RiskLevel, RiskConfig } fr
 import { generateSTRAnalysis, fetchRealTimeTransactions } from './services/geminiService';
 import { LayoutDashboard, Github, Layers } from 'lucide-react';
 
-const INITIAL_TRANSACTIONS: Transaction[] = [
-  // { 
-  //     id: 'TX-1001', 
-  //     amount: 50000, 
-  //     currency: 'INR', 
-  //     from_account: 'ACC-8892-IN (Amit Sharma)', 
-  //     to_account: 'ACC-1123-IN (Local Vendors)', 
-  //     receiver_country: 'India', 
-  //     type: 'NEFT', 
-  //     location: 'Delhi Branch',
-  //     timestamp: new Date().toISOString(), 
-  //     status: 'Processed' 
-  // },
-  // { 
-  //     id: 'TX-1002', 
-  //     amount: 120000, 
-  //     currency: 'INR', 
-  //     from_account: 'ACC-4432-US (Tech Corp)', 
-  //     to_account: 'ACC-9988-US (Cloud Services)', 
-  //     receiver_country: 'USA', 
-  //     type: 'WIRE', 
-  //     location: 'Bangalore Branch',
-  //     timestamp: new Date().toISOString(), 
-  //     status: 'Processed' 
-  // },
-];
+const INITIAL_TRANSACTIONS: Transaction[] = [];
 
-const INITIAL_RISK_SCORES: Record<string, RiskScore> = {
-  'TX-1001': {
-    transaction_id: 'TX-1001',
-    score: 12,
-    risk_level: RiskLevel.LOW,
-    explanation: 'Standard domestic transfer',
-    reasons: [],
-    breakdown: { rules: 10, velocity: 10, xgboost: 10, oumi: 5 }
-  },
-  'TX-1002': {
-    transaction_id: 'TX-1002',
-    score: 25,
-    risk_level: RiskLevel.LOW,
-    explanation: 'Verified international vendor payment',
-    reasons: [],
-    breakdown: { rules: 15, velocity: 10, xgboost: 20, oumi: 5 }
-  }
-};
+const INITIAL_RISK_SCORES: Record<string, RiskScore> = {};
 
-const INITIAL_REPORTS: Record<string, STRReport> = {
-    'TX-1001': {
-        id: 'STR-TX-1001',
-        transaction_id: 'TX-1001',
-        narrative: 'No suspicious activity detected. Routine domestic transaction.',
-        xmlPayload: '<Transaction><Status>Clean</Status></Transaction>',
-        generatedAt: new Date().toISOString(),
-        isFiled: false
-    },
-    'TX-1002': {
-        id: 'STR-TX-1002',
-        transaction_id: 'TX-1002',
-        narrative: 'No suspicious activity detected. Verified commercial entity.',
-        xmlPayload: '<Transaction><Status>Clean</Status></Transaction>',
-        generatedAt: new Date().toISOString(),
-        isFiled: false
-    }
-};
+const INITIAL_REPORTS: Record<string, STRReport> = {};
 
 const DEFAULT_RISK_CONFIG: RiskConfig = {
   highRiskJurisdictions: ['Seychelles', 'BVI', 'Cayman', 'Mauritius', 'High Risk'],
@@ -138,94 +79,81 @@ function App() {
       };
 
       // 2. Risk Logic
-      // Robust check for High Risk Jurisdictions
-      const isHighRiskJurisdiction = config.highRiskJurisdictions.some(k => newTx.receiver_country.includes(k));
       
-      // Check for Structuring (Amounts just below reporting thresholds, e.g., 9-10 Lakh INR)
+      // A. Rules Engine (Jurisdiction & Amount)
+      const isHighRiskJurisdiction = config.highRiskJurisdictions.some(k => newTx.receiver_country.includes(k));
       const isStructuring = newTx.amount >= 900000 && newTx.amount < 1000000;
       
       let rulesScore = 10;
-      if (isHighRiskJurisdiction) {
-          rulesScore = config.jurisdictionScoreHigh;
-      } else if (isStructuring) {
-          rulesScore = 85; // High rule score for structuring attempts
-      } else {
-          rulesScore = config.jurisdictionScoreLow;
-      }
+      if (isHighRiskJurisdiction) rulesScore = config.jurisdictionScoreHigh;
+      else if (isStructuring) rulesScore = 85; // High rule score for structuring attempts
+      else rulesScore = config.jurisdictionScoreLow;
       
-      // Velocity Calculation Logic
+      // B. Advanced Velocity Engine
+      const senderHistory = existingTxs.filter(t => t.from_account === newTx.from_account);
+      const currentSessionCount = velocityOverride ?? (senderHistory.length + 1);
       
-      // A. General Sender Velocity (Session count)
-      const senderTxCount = velocityOverride ?? (existingTxs.filter(t => t.from_account === newTx.from_account).length + 1);
-      
-      // B. Specific Beneficiary Velocity (Same Sender -> Same Receiver count)
-      // Detects patterns like splitting payments to the same entity
-      const sameReceiverCount = existingTxs.filter(t => t.from_account === newTx.from_account && t.to_account === newTx.to_account).length + 1;
-
-      // C. Sequential/Burst Check
-      // Checks if the immediate previous transaction was from the same sender
-      const lastTx = existingTxs.length > 0 ? existingTxs[existingTxs.length - 1] : null;
-      const isLinkedSeries = lastTx && lastTx.from_account === newTx.from_account;
-      
-      // "Burst" mode: Immediate repeat to the exact same receiver
-      const isBurst = isLinkedSeries && lastTx?.to_account === newTx.to_account;
-
-      let velocityScore = 10; // Default Low
-      
-      // Base Score from Frequency
-      if (senderTxCount >= config.velocityThresholds.critical.count) {
-          velocityScore = config.velocityThresholds.critical.score; 
-      } else if (senderTxCount >= config.velocityThresholds.high.count) {
-          velocityScore = config.velocityThresholds.high.score; 
-      } else if (senderTxCount >= config.velocityThresholds.medium.count) {
-          velocityScore = config.velocityThresholds.medium.score; 
-      }
-      
-      // Modifiers for Targeted Velocity
-      if (sameReceiverCount > 1) {
-          velocityScore += (sameReceiverCount * 5); // Add penalty for repeating target
-      }
-      
-      if (isBurst) {
-          velocityScore += 25; // High penalty for rapid sequential transfers to same target (Burst)
-      } else if (isLinkedSeries) {
-          velocityScore += 10; // Moderate penalty for sequential usage (different target)
+      // Pattern 1: Rapid Burst (Time delta check)
+      let isRapidBurst = false;
+      const lastTx = senderHistory.length > 0 ? senderHistory[senderHistory.length - 1] : null;
+      if (lastTx) {
+          const timeDelta = new Date(newTx.timestamp).getTime() - new Date(lastTx.timestamp).getTime();
+          // Flag if transactions are within 2 minutes of each other (typical for automated smurfing)
+          if (timeDelta < 2 * 60 * 1000) isRapidBurst = true;
       }
 
-      // Cap at 100
+      // Pattern 2: Tunneling (Repeated transfers to same beneficiary)
+      const sameReceiverCount = senderHistory.filter(t => t.to_account === newTx.to_account).length + 1;
+      const isTunneling = sameReceiverCount >= 3;
+
+      // Pattern 3: Fan-Out (One sender -> Multiple distinct receivers rapidly)
+      const uniqueReceivers = new Set([...senderHistory.map(t => t.to_account), newTx.to_account]).size;
+      const isFanOut = currentSessionCount >= 4 && uniqueReceivers >= 3;
+
+      // Velocity Score Calculation
+      let velocityScore = 10;
+      
+      // Base Step
+      if (currentSessionCount >= config.velocityThresholds.critical.count) velocityScore = 95;
+      else if (currentSessionCount >= config.velocityThresholds.high.count) velocityScore = 80;
+      else if (currentSessionCount >= config.velocityThresholds.medium.count) velocityScore = 45;
+      else velocityScore = 10;
+
+      // Modifiers
+      if (isRapidBurst) velocityScore += 15;
+      if (isTunneling) velocityScore += 20; // Strong indicator of structuring to a mule
+      if (isFanOut) velocityScore += 25;   // Strong indicator of dispersion/layering
+
       velocityScore = Math.min(100, velocityScore);
       const isHighVelocity = velocityScore >= config.highVelocityThreshold;
-      
-      // --- Improved Scoring Simulation for Bulk Data ---
+      const isLinkedSeries = lastTx && lastTx.from_account === newTx.from_account;
+
+      // C. XGBoost & Oumi Simulation
       const isRoundAmount = newTx.amount % 10000 === 0 && newTx.amount > 50000;
       const isHighValue = newTx.amount > 1000000; // > 10L INR
       
-      // Expanded keyword list for shell/offshore entities
       const shellKeywords = ['offshore', 'shell', 'holdings', 'trust', 'consulting', 'global', 'investments', 'capital', 'partners', 'fund'];
       const hasShellKeyword = shellKeywords.some(kw => newTx.to_account.toLowerCase().includes(kw));
 
       // XGBoost (Anomaly Detection Model) Simulation
-      // Factors: Unexpected high value, round numbers, velocity spikes, jurisdiction
-      let calculatedXgBoost = 15; // Baseline
+      let calculatedXgBoost = 15; 
       if (isHighValue) calculatedXgBoost += 20; 
       if (isRoundAmount) calculatedXgBoost += 15;
-      if (isHighVelocity) calculatedXgBoost += 35; // Correlation with velocity
+      if (isHighVelocity) calculatedXgBoost += 35; // Correlates strongly with velocity
       if (isHighRiskJurisdiction) calculatedXgBoost += 10;
-      if (isLinkedSeries) calculatedXgBoost += 15;
-      const xgBoostScore = Math.min(99, calculatedXgBoost); // Cap at 99
+      if (isTunneling) calculatedXgBoost += 20; // Repetitive pattern anomaly
+      const xgBoostScore = Math.min(99, calculatedXgBoost);
       
       // Oumi (GenAI Contextual Model) Simulation
-      // Factors: Narrative risk (Country), Structuring patterns (Velocity), Name screening
-      let calculatedOumi = 10; // Baseline
-      if (isHighRiskJurisdiction) calculatedOumi += 40; // High confidence on jurisdiction
-      if (hasShellKeyword) calculatedOumi += 30; // Contextual name risk
-      if (isStructuring) calculatedOumi += 40; // Intent detection
-      if (isHighVelocity && isRoundAmount) calculatedOumi += 25; // Machine-like behavior pattern
-      if (newTx.type === 'CASH' || newTx.type === 'CRYPTO') calculatedOumi += 20; // Channel risk
+      let calculatedOumi = 10; 
+      if (isHighRiskJurisdiction) calculatedOumi += 40; 
+      if (hasShellKeyword) calculatedOumi += 30; 
+      if (isStructuring) calculatedOumi += 40; 
+      if (isFanOut) calculatedOumi += 35; // Behavioral anomaly detected by AI
+      if (newTx.type === 'CASH' || newTx.type === 'CRYPTO') calculatedOumi += 20; 
+      const oumiScore = Math.min(99, calculatedOumi); 
 
-      const oumiScore = Math.min(99, calculatedOumi); // Cap at 99
-
-      // Weighted Score Calculation
+      // Weighted Final Score
       const totalScore = Math.round(
           (rulesScore * config.weights.rules) + 
           (velocityScore * config.weights.velocity) + 
@@ -233,23 +161,24 @@ function App() {
           (oumiScore * config.weights.oumi)
       );
       
-      // Determine Levels
       const riskLevel = determineRiskLevel(totalScore);
-      const isHighRisk = totalScore >= config.highRiskThreshold; // Flag High and Critical
+      const isHighRisk = totalScore >= config.highRiskThreshold;
 
       // Enhanced Narrative Generation
       let narrative = "";
       if (isHighRisk) {
           const riskFactors = [];
           if (isHighRiskJurisdiction) riskFactors.push(`destination jurisdiction (${newTx.receiver_country})`);
-          if (isHighVelocity) riskFactors.push(`transaction velocity (${senderTxCount} in session)`);
-          if (isLinkedSeries) riskFactors.push("linked transaction pattern");
+          if (isHighVelocity) riskFactors.push(`velocity anomaly (Score: ${velocityScore})`);
+          if (isTunneling) riskFactors.push(`tunneling detected (${sameReceiverCount}x to same beneficiary)`);
+          if (isFanOut) riskFactors.push(`fan-out pattern (${uniqueReceivers} distinct beneficiaries)`);
           if (newTx.amount > 1000000) riskFactors.push("high value amount (>10L)");
           if (isStructuring) riskFactors.push("potential structuring (amount just below threshold)");
           if (hasShellKeyword) riskFactors.push("high risk counterparty keyword");
 
           let typology = "Layering / Round-Tripping";
-          if (isStructuring || (isHighVelocity && newTx.amount < 50000)) typology = "Structuring (Smurfing)";
+          if (isStructuring || (isHighVelocity && !isFanOut)) typology = "Structuring (Smurfing)";
+          if (isFanOut) typology = "Dispersion (Fan-Out)";
           if (hasShellKeyword && isHighRiskJurisdiction) typology = "Shell Company Operations";
 
           narrative = `**Automated Risk Assessment (Batch Mode)**\n\n` +
@@ -258,20 +187,20 @@ function App() {
                       `The primary risk drivers identified are: ${riskFactors.join(", ")}.\n\n` +
                       `**Typology Indicators**:\n` +
                       `The observed activity matches patterns associated with **${typology}**. ` +
-                      `${isStructuring ? `The amount (${newTx.amount}) is just below the mandatory reporting threshold of 10 Lakhs, strongly indicating an attempt to evade detection.` : ''} ` +
-                      `${hasShellKeyword ? `The beneficiary name contains keywords ('${shellKeywords.find(k => newTx.to_account.toLowerCase().includes(k))}') often associated with shell entities.` : ''} ` +
-                      `${isHighRiskJurisdiction ? `Funds are moving to a high-risk jurisdiction (${newTx.receiver_country}) which requires enhanced due diligence.` : ''} ` +
-                      `${isHighVelocity ? `Rapid succession of transfers from ${newTx.from_account} suggests an attempt to evade velocity limits.` : ''}\n\n` +
+                      `${isTunneling ? `Repeated transfers to the same beneficiary (${newTx.to_account}) in a short session suggests an attempt to move bulk funds in smaller chunks.` : ''} ` +
+                      `${isFanOut ? `Funds are being dispersed to multiple beneficiaries rapidly, a common layering technique.` : ''} ` +
+                      `${isStructuring ? `The amount (${newTx.amount}) is just below the mandatory reporting threshold.` : ''} ` +
+                      `${isHighRiskJurisdiction ? `Funds are moving to a high-risk jurisdiction (${newTx.receiver_country}).` : ''}\n\n` +
                       `**Conclusion**:\n` +
                       `Due to the convergence of these risk factors, this transaction is marked as suspicious and an STR has been auto-generated for FIU-IND filing.`;
       } else {
           narrative = `**Routine Transaction Report**\n\n` +
                       `Analysis confirms this transaction matches standard commercial profiles. ` +
-                      `Jurisdiction (${newTx.receiver_country}) and velocity (${senderTxCount}) are within acceptable risk appetites. ` +
+                      `Jurisdiction (${newTx.receiver_country}) and velocity (${currentSessionCount}) are within acceptable risk appetites. ` +
                       `No AML red flags detected. Status: Cleared.`;
       }
 
-      // Enhanced XML Generation for Bulk/Auto-generated reports
+      // Enhanced XML Generation
       const xmlPayload = `
 <Batch>
   <Report>
@@ -292,11 +221,12 @@ function App() {
       <RiskAssessment>
         <Score>${totalScore}</Score>
         <RiskLevel>${riskLevel}</RiskLevel>
-        <VelocityCount>${senderTxCount}</VelocityCount>
+        <VelocityCount>${currentSessionCount}</VelocityCount>
         <RiskIndicators>
           ${isHighRiskJurisdiction ? '<Indicator>High Risk Jurisdiction</Indicator>' : ''}
-          ${isHighVelocity ? '<Indicator>High Velocity</Indicator>' : ''}
-          ${isStructuring ? '<Indicator>Structuring / Smurfing</Indicator>' : ''}
+          ${isRapidBurst ? '<Indicator>Rapid Burst Transfer</Indicator>' : ''}
+          ${isTunneling ? '<Indicator>Tunneling / Repeated Beneficiary</Indicator>' : ''}
+          ${isFanOut ? '<Indicator>Fan-Out Pattern</Indicator>' : ''}
           ${hasShellKeyword ? '<Indicator>Shell Company Suspected</Indicator>' : ''}
         </RiskIndicators>
       </RiskAssessment>
@@ -307,41 +237,37 @@ function App() {
   </Report>
 </Batch>`.trim();
 
-      let aiResult = { 
-          narrative: narrative, 
-          xml: xmlPayload
-      };
+      let aiResult = { narrative: narrative, xml: xmlPayload };
 
       const reasons = [];
       if (isHighRiskJurisdiction) reasons.push(`High Risk Jurisdiction (${newTx.receiver_country})`);
       
-      // Improved Velocity Breakdown in Reasons
+      // Detailed Velocity Reasons
       if (isHighVelocity) {
-         if (senderTxCount >= config.velocityThresholds.critical.count) reasons.push(`Critical Velocity (${senderTxCount} txns)`);
-         else reasons.push(`High Velocity Alert (${senderTxCount} txns)`);
+         if (isFanOut) reasons.push(`Fan-Out Pattern (${uniqueReceivers} distinct receivers)`);
+         else if (isTunneling) reasons.push(`Tunneling Pattern (${sameReceiverCount}x to same receiver)`);
+         else reasons.push(`High Velocity Alert (${currentSessionCount} txns)`);
       }
-      if (sameReceiverCount >= 3) reasons.push(`Repeated Beneficiary (${sameReceiverCount}x to ${newTx.to_account.split(' ')[0]})`);
-      if (isBurst) reasons.push('Rapid Burst Transfer Detected');
+      if (isRapidBurst) reasons.push('Rapid Burst (Time delta < 2min)');
       
       if (isStructuring) reasons.push('Potential Structuring (<10L INR)');
       if (hasShellKeyword) reasons.push('Shell Company Indicators in Name');
       if (newTx.amount > 1000000) reasons.push('High Value Transaction (> 10L)');
 
-      // Generate a dynamic and detailed explanation
+      // Detailed explanation string
       let explanation = "";
       if (isHighRisk) {
-        // Detailed high risk explanation
         const drivers = [];
-        if (rulesScore > 50) drivers.push("Rules (Regulatory)");
-        if (velocityScore > 50) drivers.push("Velocity (Frequency)");
-        if (xgBoostScore > 60) drivers.push("XGBoost (Anomaly)");
-        if (oumiScore > 60) drivers.push("Oumi AI (Context)");
+        if (rulesScore > 50) drivers.push("Rules");
+        if (velocityScore > 50) drivers.push("Velocity");
+        if (xgBoostScore > 60) drivers.push("XGBoost");
+        if (oumiScore > 60) drivers.push("Oumi AI");
         
-        explanation = `High Risk flagged (Score: ${totalScore}). Primary drivers: ${drivers.join(", ")}. This transaction deviates significantly from the user's standard profile and matches known ML typologies.`;
+        explanation = `High Risk (Score: ${totalScore}). Drivers: ${drivers.join(", ")}. Matches known ML typologies (${isFanOut ? 'Fan-Out' : isTunneling ? 'Tunneling' : 'Layering'}).`;
       } else if (riskLevel === RiskLevel.MEDIUM) {
-         explanation = `Moderate risk (${totalScore}/100) identified due to ${reasons.length > 0 ? reasons[0] : 'unusual activity'}. Requires enhanced monitoring but does not meet automatic filing thresholds.`;
+         explanation = `Moderate risk (${totalScore}/100) identified due to ${reasons.length > 0 ? reasons[0] : 'unusual activity'}. Requires enhanced monitoring.`;
       } else {
-         explanation = `Low risk transaction. Cleared by Rules Engine (Score: ${rulesScore}) and ML Model (Score: ${xgBoostScore}). No anomalies detected in velocity or jurisdiction.`;
+         explanation = `Low risk transaction. Cleared by Rules Engine and ML Model. No anomalies detected.`;
       }
 
       const riskScore: RiskScore = {
@@ -350,7 +276,7 @@ function App() {
           risk_level: riskLevel,
           explanation: explanation,
           reasons: reasons,
-          velocity_count: senderTxCount,
+          velocity_count: currentSessionCount,
           breakdown: {
               rules: rulesScore,
               velocity: velocityScore,
