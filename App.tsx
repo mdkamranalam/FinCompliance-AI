@@ -209,9 +209,44 @@ function App() {
                       `No AML red flags detected. Status: Cleared.`;
       }
 
+      // Enhanced XML Generation for Bulk/Auto-generated reports
+      const xmlPayload = `
+<Batch>
+  <Report>
+    <ReportType>STR</ReportType>
+    <Transaction>
+      <TransactionID>${newTxId}</TransactionID>
+      <TransactionDate>${newTx.timestamp}</TransactionDate>
+      <TransactionType>${newTx.type}</TransactionType>
+      <Amount currency="${newTx.currency}">${newTx.amount}</Amount>
+      <Originator>
+        <Account>${newTx.from_account}</Account>
+        <BranchLocation>${newTx.location}</BranchLocation>
+      </Originator>
+      <Beneficiary>
+        <Account>${newTx.to_account}</Account>
+        <Country>${newTx.receiver_country}</Country>
+      </Beneficiary>
+      <RiskAssessment>
+        <Score>${totalScore}</Score>
+        <RiskLevel>${riskLevel}</RiskLevel>
+        <VelocityCount>${senderTxCount}</VelocityCount>
+        <RiskIndicators>
+          ${isHighRiskJurisdiction ? '<Indicator>High Risk Jurisdiction</Indicator>' : ''}
+          ${isHighVelocity ? '<Indicator>High Velocity</Indicator>' : ''}
+          ${isLinkedSeries ? '<Indicator>Linked Series</Indicator>' : ''}
+        </RiskIndicators>
+      </RiskAssessment>
+      <SuspicionDetails>
+        <Summary>${isHighRisk ? 'Suspicious pattern detected matching money laundering typologies.' : 'Routine transaction.'}</Summary>
+      </SuspicionDetails>
+    </Transaction>
+  </Report>
+</Batch>`.trim();
+
       let aiResult = { 
           narrative: narrative, 
-          xml: `<Transaction><Id>${newTxId}</Id><Status>${isHighRisk ? 'STR' : 'Clean'}</Status><Score>${totalScore}</Score><Risk>${riskLevel}</Risk></Transaction>` 
+          xml: xmlPayload
       };
 
       const reasons = [];
@@ -220,11 +255,21 @@ function App() {
       if (isLinkedSeries) reasons.push('Linked Transaction Series (Structuring Indicator)');
       if (newTx.amount > 1000000) reasons.push('High Value Transaction (> 10L)');
 
+      // Generate a dynamic and detailed explanation
+      let explanation = "";
+      if (isHighRisk) {
+        explanation = `High Risk detected due to ${reasons.length > 0 ? reasons.join(", ") : 'aggregate risk factors'}. The composite score of ${totalScore} indicates a strong match with money laundering typologies.`;
+      } else if (riskLevel === RiskLevel.MEDIUM) {
+         explanation = `Moderate risk identified (${reasons.length > 0 ? reasons.join(", ") : 'unusual activity'}). Requires enhanced monitoring but does not meet automatic filing thresholds.`;
+      } else {
+         explanation = `Low risk transaction. Cleared by Rules Engine (Score: ${rulesScore}) and ML Model (Score: ${xgBoostScore}). No anomalies detected in velocity or jurisdiction.`;
+      }
+
       const riskScore: RiskScore = {
           transaction_id: newTx.id,
           score: totalScore,
           risk_level: riskLevel,
-          explanation: "Auto-generated risk assessment based on schema rules.",
+          explanation: explanation,
           reasons: reasons,
           velocity_count: senderTxCount,
           breakdown: {
@@ -440,7 +485,7 @@ function App() {
         transaction_id: newTx.id,
         score: totalScore,
         risk_level: riskLevel,
-        explanation: "Auto-generated risk assessment based on schema rules.",
+        explanation: result.riskScore.explanation,
         reasons: reasons,
         velocity_count: senderTxCount,
         breakdown: { rules: rulesScore, velocity: velocityScore, xgboost: xgBoostScore, oumi: oumiScore }
