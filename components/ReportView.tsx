@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Transaction, RiskScore, STRReport } from '../types';
-import { FileCode, AlertOctagon, Check, Bot, Download, Send, Loader2, CheckCircle, Info, FileDown, Printer, AlertTriangle, Activity, Copy, Terminal } from 'lucide-react';
+import { FileCode, AlertOctagon, Check, Bot, Download, Send, Loader2, CheckCircle, Info, FileDown, Printer, AlertTriangle, Activity, Copy, Terminal, PieChart } from 'lucide-react';
 
 interface ReportViewProps {
   tx: Transaction;
@@ -77,9 +77,9 @@ const ReportView: React.FC<ReportViewProps> = ({ tx, risk, report, onClose }) =>
     >
       <style>{`
         @media print {
-          @page { size: A4; margin: 10mm; }
+          @page { size: A4; margin: 15mm; }
           html, body {
-            width: 100%; height: 100%; margin: 0 !important; padding: 0 !important;
+            width: 100%; height: auto !important; margin: 0 !important; padding: 0 !important;
             overflow: visible !important; background-color: white !important;
             -webkit-print-color-adjust: exact; print-color-adjust: exact;
           }
@@ -97,15 +97,23 @@ const ReportView: React.FC<ReportViewProps> = ({ tx, risk, report, onClose }) =>
             height: auto !important;
           }
           .no-print { display: none !important; }
-          .break-inside-avoid { break-inside: avoid; }
+          
+          /* Pagination & Layout Control */
+          .print-break-avoid { break-inside: avoid !important; page-break-inside: avoid !important; }
+          .print-break-auto { break-inside: auto !important; page-break-inside: auto !important; }
+          .print-expand { max-height: none !important; overflow: visible !important; height: auto !important; white-space: pre-wrap !important; }
+          .print-overflow-visible { overflow: visible !important; }
+          
+          /* Typography & Colors Override */
           .text-slate-300, .text-slate-400, .text-slate-500, .text-white, .text-gray-500 { color: #1f2937 !important; }
           .text-green-400 { color: #15803d !important; }
           .text-red-400, .text-red-500 { color: #b91c1c !important; }
           .text-yellow-400 { color: #b45309 !important; }
           .text-blue-400 { color: #1d4ed8 !important; }
+          
           .border-slate-700 { border-color: #e5e7eb !important; }
           .bg-slate-900, .bg-secondary, .bg-slate-800, .bg-slate-950\/30, .bg-\[#0B1120\] { background-color: white !important; }
-          .bg-red-500 { background-color: #ef4444 !important; -webkit-print-color-adjust: exact; }
+          .bg-red-500 { background-color: #ef4444 !important; }
         }
       `}</style>
 
@@ -156,7 +164,7 @@ const ReportView: React.FC<ReportViewProps> = ({ tx, risk, report, onClose }) =>
           )}
           
           {/* Transaction Details Section (Schema Compliant) */}
-          <div className="bg-slate-900 p-4 sm:p-5 rounded-lg border border-slate-700 print:bg-white print:border-gray-300 print:text-black break-inside-avoid">
+          <div className="bg-slate-900 p-4 sm:p-5 rounded-lg border border-slate-700 print:bg-white print:border-gray-300 print:text-black print-break-avoid">
               <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4 border-b border-slate-700 pb-2 flex items-center gap-2 print:text-black print:border-gray-300">
                 <Info size={16} className="text-accent print:hidden" />
                 Transaction Details (Schema: transactions)
@@ -198,13 +206,13 @@ const ReportView: React.FC<ReportViewProps> = ({ tx, risk, report, onClose }) =>
           </div>
 
           {/* Risk Score Card */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 break-inside-avoid">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print-break-avoid">
             <div className="bg-slate-900 p-4 rounded-lg border border-slate-700 print:bg-white print:border-gray-300 flex flex-col items-center justify-center relative overflow-hidden">
                <p className="text-xs text-slate-500 uppercase font-bold absolute top-4 left-4 print:text-black">Risk Score</p>
                
                <div className="relative w-36 h-36 mt-4">
                   {/* SVG Gauge */}
-                  <svg className="w-full h-full transform -rotate-90">
+                  <svg className="w-full h-full transform -rotate-90" viewBox="0 0 144 144">
                     <circle cx="72" cy="72" r={circleRadius} stroke="currentColor" strokeWidth="8" fill="none" className="text-slate-800 print:text-gray-200" />
                     <circle cx="72" cy="72" r={circleRadius} stroke="currentColor" strokeWidth="8" fill="none" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round" className={`${riskConfig.color} ${riskConfig.printColor} transition-all duration-1000 ease-out`} />
                   </svg>
@@ -219,30 +227,54 @@ const ReportView: React.FC<ReportViewProps> = ({ tx, risk, report, onClose }) =>
                </div>
             </div>
 
-            <div className="col-span-2 bg-slate-900 p-4 rounded-lg border border-slate-700 print:bg-white print:border-gray-300">
+            <div className="sm:col-span-2 bg-slate-900 p-4 rounded-lg border border-slate-700 print:bg-white print:border-gray-300">
               <p className="text-xs text-slate-500 uppercase font-bold mb-3 print:text-black">Scoring Breakdown</p>
               <div className="space-y-2 mb-4">
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between items-center text-sm gap-2">
                    <span className="text-slate-300 print:text-black">RBI Rules Engine</span>
-                   <span className="text-yellow-400 font-mono print:text-black font-bold">{risk.breakdown.rules}/100</span>
+                   <span className="text-yellow-400 font-mono print:text-black font-bold whitespace-nowrap">{risk.breakdown.rules}/100</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                   <span className="text-slate-300 print:text-black">
+                <div className="flex justify-between items-center text-sm gap-2">
+                   <span className="text-slate-300 print:text-black truncate">
                      Velocity Check
                      {risk.velocity_count && risk.velocity_count > 1 && (
                        <span className="ml-1 text-xs text-slate-500 font-normal">({risk.velocity_count} detected)</span>
                      )}
                    </span>
-                   <span className="text-orange-400 font-mono print:text-black font-bold">{risk.breakdown.velocity}/100</span>
+                   <span className="text-orange-400 font-mono print:text-black font-bold whitespace-nowrap">{risk.breakdown.velocity}/100</span>
                 </div>
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between items-center text-sm gap-2">
                    <span className="text-slate-300 print:text-black">XGBoost ML Model</span>
-                   <span className="text-purple-400 font-mono print:text-black font-bold">{risk.breakdown.xgboost}/100</span>
+                   <span className="text-purple-400 font-mono print:text-black font-bold whitespace-nowrap">{risk.breakdown.xgboost}/100</span>
                 </div>
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between items-center text-sm gap-2">
                    <span className="text-slate-300 print:text-black">Oumi (Gemini) LLM</span>
-                   <span className="text-pink-400 font-mono print:text-black font-bold">{risk.breakdown.oumi}/100</span>
+                   <span className="text-pink-400 font-mono print:text-black font-bold whitespace-nowrap">{risk.breakdown.oumi}/100</span>
                 </div>
+              </div>
+
+              {/* NEW SECTION: Detailed Score Analysis */}
+              <div className="mb-4 pt-3 border-t border-slate-700/50 print:border-gray-300">
+                  <h4 className="text-[11px] font-bold text-slate-400 uppercase mb-2 flex items-center gap-1.5 print:text-black">
+                     <PieChart size={12} /> Score Composition Analysis
+                  </h4>
+                  <p className="text-xs text-slate-300 leading-5 print:text-black text-justify">
+                    The composite risk score of <strong className="text-white print:text-black">{risk.score}/100</strong> is driven by a weighted aggregation of four engines. 
+                    The <strong>Rules Engine</strong> contributed {risk.breakdown.rules} points based on regulatory heuristics (Jurisdiction/Amount). 
+                    <strong>Velocity Checks</strong> added {risk.breakdown.velocity} points reflecting transaction frequency. 
+                    The <strong>XGBoost Model</strong> assigned a risk probability of {risk.breakdown.xgboost}% based on historical patterns, while 
+                    <strong>Oumi AI</strong> assessed the narrative context risk at {risk.breakdown.oumi}/100.
+                    {risk.score > 60 && (
+                        <span className="block mt-1.5 text-orange-300 print:text-orange-700 font-medium bg-orange-900/10 p-1.5 rounded border border-orange-500/20 print:bg-orange-50 print:border-orange-200">
+                           Primary Driver: {
+                               risk.breakdown.rules >= Math.max(risk.breakdown.velocity, risk.breakdown.xgboost, risk.breakdown.oumi) ? 'Regulatory Rule Violation' : 
+                               risk.breakdown.velocity >= Math.max(risk.breakdown.rules, risk.breakdown.xgboost, risk.breakdown.oumi) ? 'High Transaction Velocity' :
+                               risk.breakdown.xgboost >= Math.max(risk.breakdown.rules, risk.breakdown.velocity, risk.breakdown.oumi) ? 'ML Anomaly Detection' :
+                               'GenAI Contextual Risk'
+                           }
+                        </span>
+                    )}
+                  </p>
               </div>
 
               {risk.velocity_count && risk.velocity_count > 1 && (
@@ -294,7 +326,7 @@ const ReportView: React.FC<ReportViewProps> = ({ tx, risk, report, onClose }) =>
           </div>
 
           {/* Oumi Generated Narrative - IMPROVED UI */}
-          <div className="group bg-slate-900 rounded-xl border border-slate-700 overflow-hidden print:bg-white print:border-gray-300 break-inside-avoid hover:border-pink-500/30 transition-colors duration-300">
+          <div className="group bg-slate-900 rounded-xl border border-slate-700 overflow-hidden print:bg-white print:border-gray-300 print-break-auto print-overflow-visible hover:border-pink-500/30 transition-colors duration-300">
             <div className="bg-slate-800/40 px-4 py-3 border-b border-slate-700 flex justify-between items-center print:bg-gray-100 print:border-gray-300">
                <h3 className="font-semibold text-slate-200 flex items-center gap-2 text-sm">
                  <Bot size={16} className="text-pink-400 print:text-black" />
@@ -321,7 +353,7 @@ const ReportView: React.FC<ReportViewProps> = ({ tx, risk, report, onClose }) =>
           </div>
 
           {/* FIU-IND XML Payload - IMPROVED UI */}
-          <div className="group bg-slate-900 rounded-xl border border-slate-700 overflow-hidden print:bg-white print:border-gray-300 break-inside-avoid hover:border-blue-500/30 transition-colors duration-300">
+          <div className="group bg-slate-900 rounded-xl border border-slate-700 overflow-hidden print:bg-white print:border-gray-300 print-break-auto print-overflow-visible hover:border-blue-500/30 transition-colors duration-300">
             <div className="bg-slate-800/40 px-4 py-3 border-b border-slate-700 flex justify-between items-center print:bg-gray-100 print:border-gray-300">
                <h3 className="font-semibold text-slate-200 flex items-center gap-2 text-sm">
                  <Terminal size={16} className="text-blue-400 print:text-blue-600" />
@@ -344,7 +376,7 @@ const ReportView: React.FC<ReportViewProps> = ({ tx, risk, report, onClose }) =>
             </div>
             {/* Dark Editor Theme */}
             <div className="relative bg-[#0B1120] print:bg-white">
-                <pre className="p-4 text-[11px] leading-6 font-mono text-blue-300 overflow-x-auto print:text-black print:whitespace-pre-wrap max-h-80 custom-scrollbar scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                <pre className="p-4 text-[11px] leading-6 font-mono text-blue-300 overflow-x-auto print:text-black print-expand custom-scrollbar scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent max-h-80">
                     {report.xmlPayload}
                 </pre>
                 <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-[#0B1120] to-transparent pointer-events-none print:hidden"></div>

@@ -40,37 +40,88 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit, onBulkSubmi
       const text = event.target?.result as string;
       if (!text) return;
 
-      // Parse CSV based on provided schema: 
-      // Header: Sender Account,Amount,Currency,Receiver Account,Type,Location,Receiver Country
-      const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+      // Robust CSV Parsing Logic
+      const lines = text.split(/\r\n|\n/).map(line => line.trim()).filter(line => line.length > 0);
       
-      // Determine start index based on header presence
-      const hasHeader = lines[0].toLowerCase().includes('sender account');
-      const dataRows = hasHeader ? lines.slice(1) : lines;
+      let headerIndex = -1;
+      // Default mapping (Standard Schema: Sender Account, Amount, Currency, Receiver Account, Type, Location, Receiver Country)
+      let colMap: Record<string, number> = {
+          from_account: 0,
+          amount: 1,
+          currency: 2,
+          to_account: 3,
+          type: 4,
+          location: 5,
+          receiver_country: 6
+      };
 
-      const transactions: Omit<Transaction, 'id' | 'status' | 'timestamp'>[] = dataRows.map(line => {
+      // 1. Detect Header Row (Scan first 10 lines)
+      for (let i = 0; i < Math.min(lines.length, 10); i++) {
+          const rowLower = lines[i].toLowerCase();
+          // Flexible detection: Must have 'amount' and some account identifier to be considered a valid header
+          if (rowLower.includes('amount') && (rowLower.includes('sender') || rowLower.includes('from') || rowLower.includes('account'))) {
+              headerIndex = i;
+              const headers = lines[i].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+              
+              colMap = {}; // Reset to build from dynamic headers
+              
+              headers.forEach((h, idx) => {
+                  if (h.includes('sender') || h.includes('from')) colMap.from_account = idx;
+                  else if (h.includes('amount')) colMap.amount = idx;
+                  else if (h.includes('currency')) colMap.currency = idx;
+                  else if (h.includes('country')) colMap.receiver_country = idx; // Prioritize specific country keyword
+                  else if (h.includes('receiver') || h.includes('to')) colMap.to_account = idx;
+                  else if (h.includes('type')) colMap.type = idx;
+                  else if (h.includes('location')) colMap.location = idx;
+              });
+              break;
+          }
+      }
+
+      // 2. Determine Data Start Index
+      let startIndex = headerIndex !== -1 ? headerIndex + 1 : 0;
+      
+      // Fallback check: If no header found, but row 0 has non-numeric amount at default index, assume it's a header we missed
+      if (headerIndex === -1 && lines.length > 0) {
+          const parts = lines[0].split(',');
+          // Check default amount index (1)
+          if (parts.length > 1 && isNaN(parseFloat(parts[1].replace(/[^0-9.-]+/g,"")))) {
+             startIndex = 1;
+          }
+      }
+
+      // 3. Parse Data
+      const transactions: Omit<Transaction, 'id' | 'status' | 'timestamp'>[] = lines.slice(startIndex).map(line => {
         const parts = line.split(',').map(s => s.trim());
         
-        // Ensure we have enough columns (7 columns in schema)
-        if (parts.length < 7) return null;
+        // Robust getter
+        const getVal = (key: string) => {
+            const idx = colMap[key];
+            if (idx === undefined || idx >= parts.length) return undefined;
+            return parts[idx];
+        };
 
-        const [from_account, amount, currency, to_account, type, location, receiver_country] = parts;
+        const amountRaw = getVal('amount');
+        if (!amountRaw) return null;
         
+        const amount = parseFloat(amountRaw.replace(/[^0-9.-]+/g,""));
+        if (isNaN(amount)) return null;
+
         return {
-          amount: parseFloat(amount) || 0,
-          currency: currency || 'INR',
-          from_account: from_account || 'Unknown',
-          to_account: to_account || 'Unknown',
-          receiver_country: receiver_country || 'Unknown',
-          type: type || 'WIRE',
-          location: location || 'Unknown',
+          amount: amount,
+          currency: getVal('currency') || 'INR',
+          from_account: getVal('from_account') || 'Unknown',
+          to_account: getVal('to_account') || 'Unknown',
+          receiver_country: getVal('receiver_country') || 'Unknown',
+          type: getVal('type') || 'WIRE',
+          location: getVal('location') || 'Unknown',
         };
       }).filter((t): t is Omit<Transaction, 'id' | 'status' | 'timestamp'> => t !== null);
 
       if (transactions.length > 0) {
         onBulkSubmit(transactions);
       } else {
-        alert("No valid transactions found in CSV. Please ensure format matches: Sender Account, Amount, Currency, Receiver Account, Type, Location, Receiver Country");
+        alert("No valid transactions found. Please ensure CSV has columns like: Amount, Sender, Receiver, Country.");
       }
       
       // Reset input

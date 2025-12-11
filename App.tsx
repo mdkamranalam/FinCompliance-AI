@@ -4,7 +4,7 @@ import TransactionForm from './components/TransactionForm';
 import KestraOrchestrator from './components/KestraOrchestrator';
 import ClineWidget from './components/ClineWidget';
 import ReportView from './components/ReportView';
-import { Transaction, AppState, RiskScore, STRReport, RiskLevel } from './types';
+import { Transaction, AppState, RiskScore, STRReport, RiskLevel, RiskConfig } from './types';
 import { generateSTRAnalysis, fetchRealTimeTransactions } from './services/geminiService';
 import { LayoutDashboard, Github, Layers } from 'lucide-react';
 
@@ -16,7 +16,7 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
   //     from_account: 'ACC-8892-IN (Amit Sharma)', 
   //     to_account: 'ACC-1123-IN (Local Vendors)', 
   //     receiver_country: 'India', 
-  //     type: 'NEFT',
+  //     type: 'NEFT', 
   //     location: 'Delhi Branch',
   //     timestamp: new Date().toISOString(), 
   //     status: 'Processed' 
@@ -28,7 +28,7 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
   //     from_account: 'ACC-4432-US (Tech Corp)', 
   //     to_account: 'ACC-9988-US (Cloud Services)', 
   //     receiver_country: 'USA', 
-  //     type: 'WIRE',
+  //     type: 'WIRE', 
   //     location: 'Bangalore Branch',
   //     timestamp: new Date().toISOString(), 
   //     status: 'Processed' 
@@ -73,6 +73,32 @@ const INITIAL_REPORTS: Record<string, STRReport> = {
     }
 };
 
+const DEFAULT_RISK_CONFIG: RiskConfig = {
+  highRiskJurisdictions: ['Seychelles', 'BVI', 'Cayman', 'Mauritius', 'High Risk'],
+  jurisdictionScoreHigh: 95,
+  jurisdictionScoreLow: 10,
+  velocityThresholds: {
+    critical: { count: 5, score: 95 },
+    high: { count: 3, score: 80 },
+    medium: { count: 2, score: 40 }
+  },
+  linkedSeriesBoost: 20,
+  linkedSeriesMinScore: 75,
+  highVelocityThreshold: 80,
+  highRiskThreshold: 60,
+  weights: {
+    rules: 0.5,
+    velocity: 0.3,
+    xgboost: 0.1,
+    oumi: 0.1
+  },
+  riskLevelThresholds: {
+    critical: 80,
+    high: 60,
+    medium: 40
+  }
+};
+
 function App() {
   const [state, setState] = useState<AppState>({
     transactions: INITIAL_TRANSACTIONS,
@@ -82,13 +108,15 @@ function App() {
     isProcessing: false,
     processingStatus: '',
     kestraStep: 0,
+    riskConfig: DEFAULT_RISK_CONFIG
   });
 
   // Helper to determine Risk Level based on score
   const determineRiskLevel = (score: number): RiskLevel => {
-      if (score >= 80) return RiskLevel.CRITICAL;
-      if (score >= 60) return RiskLevel.HIGH;
-      if (score >= 40) return RiskLevel.MEDIUM;
+      const { riskLevelThresholds } = state.riskConfig;
+      if (score >= riskLevelThresholds.critical) return RiskLevel.CRITICAL;
+      if (score >= riskLevelThresholds.high) return RiskLevel.HIGH;
+      if (score >= riskLevelThresholds.medium) return RiskLevel.MEDIUM;
       return RiskLevel.LOW;
   };
 
@@ -98,6 +126,8 @@ function App() {
       existingTxs: Transaction[],
       velocityOverride?: number
   ) => {
+      const config = state.riskConfig;
+
       // 1. Prepare Transaction
       const newTxId = `TX-${1000 + existingTxs.length + 1}`;
       const newTx: Transaction = {
@@ -109,46 +139,85 @@ function App() {
 
       // 2. Risk Logic
       // Robust check for High Risk Jurisdictions
-      const riskKeywords = ['Seychelles', 'BVI', 'Cayman', 'Mauritius', 'High Risk'];
-      const isHighRiskJurisdiction = riskKeywords.some(k => newTx.receiver_country.includes(k));
+      const isHighRiskJurisdiction = config.highRiskJurisdictions.some(k => newTx.receiver_country.includes(k));
       
-      const rulesScore = isHighRiskJurisdiction ? 95 : 10;
+      const rulesScore = isHighRiskJurisdiction ? config.jurisdictionScoreHigh : config.jurisdictionScoreLow;
       
       // Use optimized velocity count if provided, otherwise calculate
       const senderTxCount = velocityOverride ?? (existingTxs.filter(t => t.from_account === newTx.from_account).length + 1);
       
+      // Check for Linked Series (Sequential transaction from same account)
+      const lastTx = existingTxs.length > 0 ? existingTxs[existingTxs.length - 1] : null;
+      const isLinkedSeries = lastTx && lastTx.from_account === newTx.from_account;
+
       let velocityScore = 10; // Default Low
-      if (senderTxCount >= 5) {
-          velocityScore = 95; // Critical: High frequency/spam behavior
-      } else if (senderTxCount >= 3) {
-          velocityScore = 80; // High: Unusual frequency
-      } else if (senderTxCount === 2) {
-          velocityScore = 40; // Medium: Recurring
+      if (senderTxCount >= config.velocityThresholds.critical.count) {
+          velocityScore = config.velocityThresholds.critical.score; // Critical: High frequency/spam behavior
+      } else if (senderTxCount >= config.velocityThresholds.high.count) {
+          velocityScore = config.velocityThresholds.high.score; // High: Unusual frequency
+      } else if (senderTxCount >= config.velocityThresholds.medium.count) {
+          velocityScore = config.velocityThresholds.medium.score; // Medium: Recurring
+      }
+      
+      // Apply boost for Linked Series (Structuring/Smurfing Indicator)
+      if (isLinkedSeries) {
+          velocityScore = Math.max(velocityScore + config.linkedSeriesBoost, config.linkedSeriesMinScore); 
       }
 
-      const isHighVelocity = velocityScore >= 80;
+      const isHighVelocity = velocityScore >= config.highVelocityThreshold;
       const xgBoostScore = (isHighRiskJurisdiction || isHighVelocity) ? 92 : 15;
       
       const oumiScore = (isHighRiskJurisdiction || isHighVelocity) ? 98 : 5;
       
       // Weighted Score Calculation
-      const totalScore = Math.round((rulesScore * 0.5) + (velocityScore * 0.3) + (xgBoostScore * 0.1) + (oumiScore * 0.1));
+      const totalScore = Math.round(
+          (rulesScore * config.weights.rules) + 
+          (velocityScore * config.weights.velocity) + 
+          (xgBoostScore * config.weights.xgboost) + 
+          (oumiScore * config.weights.oumi)
+      );
       
       // Determine Levels
       const riskLevel = determineRiskLevel(totalScore);
-      const isHighRisk = totalScore >= 60; // Flag High and Critical
+      const isHighRisk = totalScore >= config.highRiskThreshold; // Flag High and Critical
 
-      // For bulk processing, use template generation to simulate speed
+      // Enhanced Narrative Generation (Replacing simple template with dynamic, detailed analysis)
+      let narrative = "";
+      if (isHighRisk) {
+          const riskFactors = [];
+          if (isHighRiskJurisdiction) riskFactors.push(`destination jurisdiction (${newTx.receiver_country})`);
+          if (isHighVelocity) riskFactors.push(`transaction velocity (${senderTxCount} in session)`);
+          if (isLinkedSeries) riskFactors.push("linked transaction pattern");
+          if (newTx.amount > 1000000) riskFactors.push("high value amount");
+
+          const typology = isHighVelocity || isLinkedSeries ? "Structuring (Smurfing)" : "Layering / Round-Tripping";
+
+          narrative = `**Automated Risk Assessment (Batch Mode)**\n\n` +
+                      `**Analysis**:\n` +
+                      `This transaction (ID: ${newTxId}) was flagged by the Kestra Rules Engine with a risk score of ${totalScore}/100 (${riskLevel}). ` +
+                      `The primary risk drivers identified are: ${riskFactors.join(", ")}.\n\n` +
+                      `**Typology Indicators**:\n` +
+                      `The observed activity matches patterns associated with **${typology}**. ` +
+                      `${isHighRiskJurisdiction ? `Funds are moving to a high-risk jurisdiction (${newTx.receiver_country}) which requires enhanced due diligence.` : ''} ` +
+                      `${isHighVelocity ? `Rapid succession of transfers from ${newTx.from_account} suggests an attempt to evade reporting thresholds.` : ''}\n\n` +
+                      `**Conclusion**:\n` +
+                      `Due to the convergence of these risk factors, this transaction is marked as suspicious and an STR has been auto-generated for FIU-IND filing.`;
+      } else {
+          narrative = `**Routine Transaction Report**\n\n` +
+                      `Analysis confirms this transaction matches standard commercial profiles. ` +
+                      `Jurisdiction (${newTx.receiver_country}) and velocity (${senderTxCount}) are within acceptable risk appetites. ` +
+                      `No AML red flags detected. Status: Cleared.`;
+      }
+
       let aiResult = { 
-          narrative: isHighRisk 
-              ? `Automated STR generated via Kestra Batch Pipeline. Flags: ${isHighRiskJurisdiction ? 'High Risk Jurisdiction' : ''} ${isHighVelocity ? 'High Velocity' : ''}.` 
-              : "Standard commercial transaction processed via bulk ingest.", 
-          xml: `<Transaction><Id>${newTxId}</Id><Status>${isHighRisk ? 'STR' : 'Clean'}</Status></Transaction>` 
+          narrative: narrative, 
+          xml: `<Transaction><Id>${newTxId}</Id><Status>${isHighRisk ? 'STR' : 'Clean'}</Status><Score>${totalScore}</Score><Risk>${riskLevel}</Risk></Transaction>` 
       };
 
       const reasons = [];
       if (isHighRiskJurisdiction) reasons.push(`High Risk Jurisdiction (${newTx.receiver_country})`);
       if (isHighVelocity) reasons.push(`High Velocity Alert (${senderTxCount} recent txns)`);
+      if (isLinkedSeries) reasons.push('Linked Transaction Series (Structuring Indicator)');
       if (newTx.amount > 1000000) reasons.push('High Value Transaction (> 10L)');
 
       const riskScore: RiskScore = {
@@ -182,11 +251,12 @@ function App() {
       setState(prev => ({ 
           ...prev, 
           isProcessing: true, 
-          processingStatus: `Initializing Kestra Batch Pipeline for ${txsData.length} records...`,
+          processingStatus: `[Kestra] Triggering execution: bulk_csv_ingest (${txsData.length} records)...`,
           kestraStep: 1 
       }));
 
-      await new Promise(r => setTimeout(r, 800));
+      // Simulate Kestra startup overhead
+      await new Promise(r => setTimeout(r, 1000));
 
       const BATCH_SIZE = 5;
       let currentTxs = [...state.transactions];
@@ -203,40 +273,59 @@ function App() {
           const batch = txsData.slice(i, i + BATCH_SIZE);
           const batchNewTxs: Transaction[] = [];
 
-          setState(prev => ({ ...prev, kestraStep: 2, processingStatus: `Batch ${Math.floor(i/BATCH_SIZE) + 1}: Executing Rules Engine...` }));
-          await new Promise(r => setTimeout(r, 200));
+          // Kestra Step 2: Rules Engine
+          setState(prev => ({ 
+            ...prev, 
+            kestraStep: 2, 
+            processingStatus: `[Kestra] Task: rules_engine | Batch ${Math.ceil((i + 1) / BATCH_SIZE)} processing...` 
+          }));
+          await new Promise(r => setTimeout(r, 300));
 
           for (const txData of batch) {
               const currentCount = senderVelocityMap.get(txData.from_account) || 0;
               const newVelocityCount = currentCount + 1;
               senderVelocityMap.set(txData.from_account, newVelocityCount);
 
-              const result = await runRiskPipeline(txData, currentTxs, newVelocityCount);
+              // Pass accumulated transactions to properly detect linked series and generate correct IDs
+              const result = await runRiskPipeline(txData, [...currentTxs, ...batchNewTxs], newVelocityCount);
               
               batchNewTxs.push(result.newTx);
               newRiskScores[result.newTx.id] = result.riskScore;
               newReports[result.newTx.id] = result.strReport;
           }
 
+          // Kestra Step 3 & 4: Scoring & AI (Simulated for batch)
+          setState(prev => ({ 
+              ...prev, 
+              kestraStep: 3, 
+              processingStatus: `[Kestra] Task: xgboost_scoring | Scoring ${batch.length} records...` 
+          }));
+          await new Promise(r => setTimeout(r, 300));
+
+          setState(prev => ({ 
+              ...prev, 
+              kestraStep: 4, 
+              processingStatus: `[Kestra] Task: oumi_narrative_gen | Generating reports...` 
+          }));
+          await new Promise(r => setTimeout(r, 200));
+
           currentTxs = [...currentTxs, ...batchNewTxs];
           processedCount += batch.length;
 
-          setState(prev => ({ ...prev, kestraStep: 3, processingStatus: `Batch ${Math.floor(i/BATCH_SIZE) + 1}: Scoring & AI Generation...` }));
-          await new Promise(r => setTimeout(r, 100));
-
+          // Update State with batch results
           setState(prev => ({
               ...prev,
               transactions: currentTxs,
               riskScores: { ...prev.riskScores, ...newRiskScores },
               reports: { ...prev.reports, ...newReports },
-              processingStatus: `Processed ${processedCount}/${txsData.length} transactions...`
+              processingStatus: `[Kestra] Progress: ${processedCount}/${txsData.length} records processed.`
           }));
       }
 
       setState(prev => ({
           ...prev,
           isProcessing: false,
-          processingStatus: 'Batch Ingestion Complete',
+          processingStatus: '[Kestra] Workflow execution: SUCCESS',
           kestraStep: 6 
       }));
   };
@@ -274,7 +363,7 @@ function App() {
 
     setState(prev => ({ 
         ...prev, 
-        isProcessing: true,
+        isProcessing: true, 
         processingStatus: 'Ingesting via FastAPI...',
         kestraStep: 1, 
         transactions: [...prev.transactions, newTx] 
@@ -288,34 +377,55 @@ function App() {
     await new Promise(r => setTimeout(r, 1500));
     setState(prev => ({ ...prev, kestraStep: 3, processingStatus: 'Calculating XGBoost Risk Score...' }));
     
-    // Risk Calculation
-    const riskKeywords = ['Seychelles', 'BVI', 'Cayman', 'Mauritius', 'High Risk'];
-    const isHighRiskJurisdiction = riskKeywords.some(k => newTx.receiver_country.includes(k));
-    const rulesScore = isHighRiskJurisdiction ? 95 : 10;
-    
+    // Risk Calculation (Using runRiskPipeline logic within handleIngest context efficiently)
+    // Calculate velocity for this specific single ingest
     const senderTxCount = state.transactions.filter(t => t.from_account === newTx.from_account).length + 1;
     
-    let velocityScore = 10;
-    if (senderTxCount >= 5) { velocityScore = 95; } 
-    else if (senderTxCount >= 3) { velocityScore = 80; } 
-    else if (senderTxCount === 2) { velocityScore = 40; }
+    // Reuse the pipeline function to ensure consistent scoring logic
+    const result = await runRiskPipeline(txData, state.transactions, senderTxCount);
+    
+    // Manually calculating config logic for step-by-step display, but use pipeline results for the final object
+    const config = state.riskConfig;
+    const isHighRiskJurisdiction = config.highRiskJurisdictions.some(k => newTx.receiver_country.includes(k));
+    const rulesScore = isHighRiskJurisdiction ? config.jurisdictionScoreHigh : config.jurisdictionScoreLow;
+    
+    // Linked Series Check
+    const lastTx = state.transactions.length > 0 ? state.transactions[state.transactions.length - 1] : null;
+    const isLinkedSeries = lastTx && lastTx.from_account === newTx.from_account;
 
-    const isHighVelocity = velocityScore >= 80;
+    let velocityScore = 10;
+    if (senderTxCount >= config.velocityThresholds.critical.count) { velocityScore = config.velocityThresholds.critical.score; } 
+    else if (senderTxCount >= config.velocityThresholds.high.count) { velocityScore = config.velocityThresholds.high.score; } 
+    else if (senderTxCount >= config.velocityThresholds.medium.count) { velocityScore = config.velocityThresholds.medium.score; }
+
+    if (isLinkedSeries) {
+        velocityScore = Math.max(velocityScore + config.linkedSeriesBoost, config.linkedSeriesMinScore);
+    }
+
+    const isHighVelocity = velocityScore >= config.highVelocityThreshold;
     const xgBoostScore = (isHighRiskJurisdiction || isHighVelocity) ? 92 : 15;
     
     const oumiScore = (isHighRiskJurisdiction || isHighVelocity) ? 98 : 5;
-    const totalScore = Math.round((rulesScore * 0.5) + (velocityScore * 0.3) + (xgBoostScore * 0.1) + (oumiScore * 0.1));
+    
+    const totalScore = Math.round(
+        (rulesScore * config.weights.rules) + 
+        (velocityScore * config.weights.velocity) + 
+        (xgBoostScore * config.weights.xgboost) + 
+        (oumiScore * config.weights.oumi)
+    );
 
     // Determine Levels
     const riskLevel = determineRiskLevel(totalScore);
-    const isHighRisk = totalScore >= 60; // Flag High and Critical
+    const isHighRisk = totalScore >= config.highRiskThreshold;
 
     // Step 4: Oumi/Gemini AI
     await new Promise(r => setTimeout(r, 1000));
     setState(prev => ({ ...prev, kestraStep: 4, processingStatus: 'Generating Oumi Narrative...' }));
     
-    let aiResult = { narrative: "Standard commercial transaction.", xml: "<Transaction>...</Transaction>" };
+    // Default to the enhanced narrative from pipeline
+    let aiResult = { narrative: result.strReport.narrative, xml: result.strReport.xmlPayload };
     
+    // For single ingest, we can afford to hit the real API for high risk cases to get even better uniqueness
     if (isHighRisk) {
         aiResult = await generateSTRAnalysis(newTx, senderTxCount);
     }
@@ -323,6 +433,7 @@ function App() {
     const reasons = [];
     if (isHighRiskJurisdiction) reasons.push(`High Risk Jurisdiction (${newTx.receiver_country})`);
     if (isHighVelocity) reasons.push(`High Velocity Alert (${senderTxCount} recent txns)`);
+    if (isLinkedSeries) reasons.push('Linked Transaction Series (Structuring Indicator)');
     if (newTx.amount > 1000000) reasons.push('High Value Transaction (> 10L)');
 
     const riskScore: RiskScore = {
@@ -400,12 +511,12 @@ function App() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main className="max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
         
         {/* Kestra Orchestration Visualization */}
         <KestraOrchestrator currentStep={state.kestraStep} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
           
           {/* Main Dashboard Area */}
           <div className="lg:col-span-2 space-y-8">

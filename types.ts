@@ -6,6 +6,32 @@ export enum RiskLevel {
   CRITICAL = 'Critical'
 }
 
+export interface RiskConfig {
+  highRiskJurisdictions: string[];
+  jurisdictionScoreHigh: number;
+  jurisdictionScoreLow: number;
+  velocityThresholds: {
+    critical: { count: number; score: number };
+    high: { count: number; score: number };
+    medium: { count: number; score: number };
+  };
+  linkedSeriesBoost: number;
+  linkedSeriesMinScore: number;
+  highVelocityThreshold: number;
+  highRiskThreshold: number; 
+  weights: {
+    rules: number;
+    velocity: number;
+    xgboost: number;
+    oumi: number;
+  };
+  riskLevelThresholds: {
+      critical: number;
+      high: number;
+      medium: number;
+  };
+}
+
 // Aligned with 'transactions' table schema
 export interface Transaction {
   id: string; // Using string to maintain "TX-1001" format for demo, corresponds to 'id' (int) in DB
@@ -56,4 +82,5 @@ export interface AppState {
   isProcessing: boolean;
   processingStatus: string;
   kestraStep: number;
+  riskConfig: RiskConfig;
 }

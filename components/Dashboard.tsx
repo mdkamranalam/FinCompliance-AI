@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { Transaction, RiskScore, RiskLevel } from '../types';
-import { AlertTriangle, ShieldCheck, Activity, Filter, Search, ArrowUpRight, ArrowDownLeft, X, AlertOctagon, ChevronRight, MapPin } from 'lucide-react';
+import { AlertTriangle, ShieldCheck, Activity, Filter, Search, ArrowUpRight, ArrowDownLeft, X, AlertOctagon, ChevronRight, MapPin, TrendingUp } from 'lucide-react';
 
 interface DashboardProps {
   transactions: Transaction[];
@@ -22,7 +22,13 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, riskScores, onSelec
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const highRiskCount = transactions.filter(t => t.status === 'Flagged').length;
-  const processedCount = transactions.filter(t => t.status === 'Processed').length;
+  
+  // Calculate Compliance Rate based on finalized transactions only (exclude Pending)
+  const finalizedTransactions = transactions.filter(t => t.status !== 'Pending');
+  const cleanCount = finalizedTransactions.filter(t => t.status === 'Processed').length;
+  const complianceRate = finalizedTransactions.length > 0 
+    ? Math.round((cleanCount / finalizedTransactions.length) * 100) 
+    : 100;
   
   const pieData = useMemo(() => {
     const counts = {
@@ -76,6 +82,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, riskScores, onSelec
         <div>
           <p className="text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider">Total Transactions</p>
           <h2 className="text-xl md:text-2xl font-bold text-white mt-1">{transactions.length}</h2>
+          <p className="text-[10px] text-slate-500 mt-1">
+             {transactions.filter(t => t.status === 'Pending').length} Pending Processing
+          </p>
         </div>
         <div className="p-3 bg-blue-500/10 rounded-lg text-blue-400">
           <Activity size={20} className="md:w-6 md:h-6" />
@@ -86,6 +95,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, riskScores, onSelec
         <div>
           <p className="text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider">Suspicious Alerts</p>
           <h2 className="text-xl md:text-2xl font-bold text-white mt-1">{highRiskCount}</h2>
+           <p className="text-[10px] text-slate-500 mt-1">
+             Requires Review
+          </p>
         </div>
         <div className="p-3 bg-red-500/10 rounded-lg text-red-400">
           <AlertTriangle size={20} className="md:w-6 md:h-6" />
@@ -93,13 +105,22 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, riskScores, onSelec
       </div>
 
       <div className="bg-secondary p-4 md:p-5 rounded-xl border border-slate-700 flex items-center justify-between col-span-1 sm:col-span-2 lg:col-span-1 shadow-sm">
-        <div>
+        <div className="w-full">
           <p className="text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider">Compliance Rate</p>
-          <h2 className="text-xl md:text-2xl font-bold text-white mt-1">
-            {transactions.length > 0 ? Math.round((processedCount / transactions.length) * 100) : 100}%
-          </h2>
+          <div className="flex items-end justify-between w-full">
+             <h2 className="text-xl md:text-2xl font-bold text-white mt-1">{complianceRate}%</h2>
+             <span className="text-xs text-green-400 mb-1.5 font-medium flex items-center bg-green-900/20 px-1.5 py-0.5 rounded border border-green-500/20">
+                <TrendingUp size={12} className="mr-1" /> Stable
+             </span>
+          </div>
+          <div className="w-full bg-slate-800 h-1.5 mt-3 rounded-full overflow-hidden">
+             <div 
+               className={`h-full rounded-full transition-all duration-1000 ease-out ${complianceRate > 90 ? 'bg-green-500' : complianceRate > 70 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+               style={{ width: `${complianceRate}%` }}
+             ></div>
+          </div>
         </div>
-        <div className="p-3 bg-green-500/10 rounded-lg text-green-400">
+        <div className="p-3 bg-green-500/10 rounded-lg text-green-400 ml-4 h-fit">
           <ShieldCheck size={20} className="md:w-6 md:h-6" />
         </div>
       </div>
@@ -161,8 +182,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, riskScores, onSelec
       {/* Recent Transactions Section */}
       <div className="col-span-1 sm:col-span-2 lg:col-span-3 bg-secondary rounded-xl border border-slate-700 overflow-hidden shadow-sm">
         {/* Header with Filters */}
-        <div className="p-4 border-b border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-800/20">
-            <div className="flex items-center justify-between md:justify-start gap-4">
+        <div className="p-4 border-b border-slate-700 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-800/20">
+            <div className="flex items-center justify-between lg:justify-start gap-4">
               <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
                 Recent Transactions
                 <span className="text-xs font-normal text-slate-500 ml-1">({filteredTransactions.length})</span>
@@ -172,12 +193,12 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, riskScores, onSelec
               </span>
             </div>
 
-            <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-                <div className="relative flex-1 md:w-64">
+            <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                <div className="relative flex-1 lg:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={14} />
                   <input
                     type="text"
-                    placeholder="Search Sender or Receiver Account..."
+                    placeholder="Search Sender or Receiver..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 text-xs text-slate-300 rounded-lg pl-9 pr-8 py-2 focus:outline-none focus:border-accent placeholder-slate-600 transition-all"
@@ -192,11 +213,11 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, riskScores, onSelec
                   )}
                 </div>
 
-               <div className="flex gap-2">
+               <div className="grid grid-cols-2 sm:flex sm:flex-1 gap-2">
                   <select 
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="flex-1 bg-slate-900 border border-slate-700 text-xs text-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-accent"
+                    className="w-full bg-slate-900 border border-slate-700 text-xs text-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-accent"
                   >
                     <option value="All">All Status</option>
                     <option value="Processed">Processed</option>
@@ -207,7 +228,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, riskScores, onSelec
                   <select 
                     value={countryFilter}
                     onChange={(e) => setCountryFilter(e.target.value)}
-                    className="flex-1 bg-slate-900 border border-slate-700 text-xs text-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-accent"
+                    className="w-full bg-slate-900 border border-slate-700 text-xs text-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-accent"
                   >
                     <option value="All">All Countries</option>
                     {uniqueCountries.map(j => (
@@ -218,9 +239,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, riskScores, onSelec
             </div>
         </div>
 
-        {/* Desktop Table View (Hidden on Mobile) */}
+        {/* Desktop Table View */}
         <div className="hidden md:block overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left text-sm text-slate-400">
+          <table className="w-full text-left text-sm text-slate-400 whitespace-nowrap">
             <thead className="bg-slate-800/50 text-xs uppercase font-medium text-slate-500">
               <tr>
                 <th className="px-4 py-3 font-semibold tracking-wider">ID</th>
@@ -314,7 +335,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, riskScores, onSelec
                 const isHighRisk = riskLevel === RiskLevel.HIGH || riskLevel === RiskLevel.CRITICAL;
 
                 return (
-                  <div key={tx.id} className="p-4 space-y-3 hover:bg-slate-800/30 transition-colors active:bg-slate-800/50" onClick={() => onSelectTx(tx.id)}>
+                  <div key={tx.id} className="p-4 space-y-3 hover:bg-slate-800/30 transition-colors active:bg-slate-800/50 cursor-pointer" onClick={() => onSelectTx(tx.id)}>
                      {/* Top Row: ID & Status/Risk */}
                      <div className="flex justify-between items-start">
                         <div className="flex flex-col">

@@ -90,9 +90,15 @@ export const generateSTRAnalysis = async (tx: Transaction, velocityCount: number
          - Introduction: Source of alert (e.g., Rule-based engine, Velocity check).
          - Analysis: Details of the transaction, counterparties, and fund flow analysis.
          - Suspicion Indicators: Explicitly link the observed behavior to money laundering typologies.
-           - Example: "The rapid movement of funds (${velocityCount} transactions) to ${tx.receiver_country} suggests **layering**, potentially attempting to obfuscate the source of funds."
-           - Example: "Repeated transfers just below regulatory reporting thresholds may indicate **structuring** (smurfing)."
-           - Example: "Funds originating from and returning to related entities in different jurisdictions could suggest **round-tripping** or trade-based money laundering."
+           - TYPOLOGY: STRUCTURING / SMURFING
+             If multiple small transactions are observed or velocity is high:
+             "The pattern of ${velocityCount} transactions in rapid succession suggests **structuring** (smurfing), likely intended to evade regulatory reporting thresholds."
+           - TYPOLOGY: ROUND-TRIPPING
+             If funds move to tax havens (like ${tx.receiver_country}) or offshore entities:
+             "The transfer to a high-risk jurisdiction (${tx.receiver_country}) with no apparent underlying trade rationale suggests **round-tripping** or layering, aimed at moving capital out of the country and returning it as foreign investment."
+           - TYPOLOGY: LAYERING
+             If funds are moved through complex paths or shell-like entities:
+             "The immediate movement of funds to an unrelated entity in ${tx.receiver_country} suggests **layering**, attempting to distance illicit funds from their source."
          - Conclusion: Strong recommendation to file STR based on the identified risks.
        - FOR LOW RISK (Normal Jurisdiction, Low Velocity, Low Amount):
          Structure:
