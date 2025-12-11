@@ -153,27 +153,47 @@ function App() {
           rulesScore = config.jurisdictionScoreLow;
       }
       
-      // Use optimized velocity count if provided, otherwise calculate
+      // Velocity Calculation Logic
+      
+      // A. General Sender Velocity (Session count)
       const senderTxCount = velocityOverride ?? (existingTxs.filter(t => t.from_account === newTx.from_account).length + 1);
       
-      // Check for Linked Series (Sequential transaction from same account)
+      // B. Specific Beneficiary Velocity (Same Sender -> Same Receiver count)
+      // Detects patterns like splitting payments to the same entity
+      const sameReceiverCount = existingTxs.filter(t => t.from_account === newTx.from_account && t.to_account === newTx.to_account).length + 1;
+
+      // C. Sequential/Burst Check
+      // Checks if the immediate previous transaction was from the same sender
       const lastTx = existingTxs.length > 0 ? existingTxs[existingTxs.length - 1] : null;
       const isLinkedSeries = lastTx && lastTx.from_account === newTx.from_account;
+      
+      // "Burst" mode: Immediate repeat to the exact same receiver
+      const isBurst = isLinkedSeries && lastTx?.to_account === newTx.to_account;
 
       let velocityScore = 10; // Default Low
+      
+      // Base Score from Frequency
       if (senderTxCount >= config.velocityThresholds.critical.count) {
-          velocityScore = config.velocityThresholds.critical.score; // Critical: High frequency/spam behavior
+          velocityScore = config.velocityThresholds.critical.score; 
       } else if (senderTxCount >= config.velocityThresholds.high.count) {
-          velocityScore = config.velocityThresholds.high.score; // High: Unusual frequency
+          velocityScore = config.velocityThresholds.high.score; 
       } else if (senderTxCount >= config.velocityThresholds.medium.count) {
-          velocityScore = config.velocityThresholds.medium.score; // Medium: Recurring
+          velocityScore = config.velocityThresholds.medium.score; 
       }
       
-      // Apply boost for Linked Series (Structuring/Smurfing Indicator)
-      if (isLinkedSeries) {
-          velocityScore = Math.max(velocityScore + config.linkedSeriesBoost, config.linkedSeriesMinScore); 
+      // Modifiers for Targeted Velocity
+      if (sameReceiverCount > 1) {
+          velocityScore += (sameReceiverCount * 5); // Add penalty for repeating target
+      }
+      
+      if (isBurst) {
+          velocityScore += 25; // High penalty for rapid sequential transfers to same target (Burst)
+      } else if (isLinkedSeries) {
+          velocityScore += 10; // Moderate penalty for sequential usage (different target)
       }
 
+      // Cap at 100
+      velocityScore = Math.min(100, velocityScore);
       const isHighVelocity = velocityScore >= config.highVelocityThreshold;
       
       // --- Improved Scoring Simulation for Bulk Data ---
@@ -189,7 +209,7 @@ function App() {
       let calculatedXgBoost = 15; // Baseline
       if (isHighValue) calculatedXgBoost += 20; 
       if (isRoundAmount) calculatedXgBoost += 15;
-      if (isHighVelocity) calculatedXgBoost += 35; // Correlation
+      if (isHighVelocity) calculatedXgBoost += 35; // Correlation with velocity
       if (isHighRiskJurisdiction) calculatedXgBoost += 10;
       if (isLinkedSeries) calculatedXgBoost += 15;
       const xgBoostScore = Math.min(99, calculatedXgBoost); // Cap at 99
@@ -294,10 +314,17 @@ function App() {
 
       const reasons = [];
       if (isHighRiskJurisdiction) reasons.push(`High Risk Jurisdiction (${newTx.receiver_country})`);
-      if (isHighVelocity) reasons.push(`High Velocity Alert (${senderTxCount} recent txns)`);
+      
+      // Improved Velocity Breakdown in Reasons
+      if (isHighVelocity) {
+         if (senderTxCount >= config.velocityThresholds.critical.count) reasons.push(`Critical Velocity (${senderTxCount} txns)`);
+         else reasons.push(`High Velocity Alert (${senderTxCount} txns)`);
+      }
+      if (sameReceiverCount >= 3) reasons.push(`Repeated Beneficiary (${sameReceiverCount}x to ${newTx.to_account.split(' ')[0]})`);
+      if (isBurst) reasons.push('Rapid Burst Transfer Detected');
+      
       if (isStructuring) reasons.push('Potential Structuring (<10L INR)');
       if (hasShellKeyword) reasons.push('Shell Company Indicators in Name');
-      if (isLinkedSeries) reasons.push('Linked Transaction Series');
       if (newTx.amount > 1000000) reasons.push('High Value Transaction (> 10L)');
 
       // Generate a dynamic and detailed explanation
